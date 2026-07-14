@@ -91,6 +91,10 @@
   .resume-card .nota{ font-size:16px; font-weight:bold; color:var(--verde-escuro); margin:2px 0; }
   .resume-card .count{ font-size:12px; color:var(--cinza-texto); }
 
+  .session-card{
+    border:2px solid var(--verde); border-radius:12px; padding:16px 18px; margin-bottom:14px;
+  }
+
   /* Camera screen */
   .cam-wrap{ position:relative; width:100%; aspect-ratio:3/4; background:#000; overflow:hidden; flex-shrink:0; }
   .cam-wrap video, .cam-wrap canvas.preview{ width:100%; height:100%; object-fit:cover; display:block; }
@@ -181,20 +185,33 @@
         <button class="btn-primary" id="btn-start-session">Iniciar sessão</button>
       </div>
 
-      <div id="resume-block" style="display:none;">
-        <p class="hint" style="text-align:center; margin-top:24px;">— ou —</p>
-        <div class="resume-card">
-          <div>
-            <div class="label">Sessão em andamento</div>
-            <div class="nota" id="resume-nota">Nota —</div>
-            <div class="count" id="resume-count">0 pontos registrados</div>
-          </div>
-          <button class="btn-primary" style="width:auto; padding:12px 18px;" id="btn-resume">Continuar</button>
+      <div id="limit-block" style="display:none;">
+        <div style="background:#FDECEC; border:1px solid #F0B8B8; border-radius:10px; padding:16px 18px;">
+          <p style="font-size:14px; font-weight:bold; color:#791F1F; margin:0 0 4px;">Limite de 3 sessões atingido</p>
+          <p style="font-size:13px; color:#791F1F; margin:0;">Gere o PDF ou descarte alguma sessão abaixo antes de abrir uma nota nova.</p>
         </div>
-        <button class="btn-ghost btn-danger" id="btn-discard" style="margin-top:14px;">Descartar sessão</button>
       </div>
+
+      <div id="sessions-list" style="margin-top:22px;"></div>
     </div>
   </div>
+
+  <!-- TEMPLATE: cartão de sessão (usado via JS) -->
+  <template id="session-card-template">
+    <div class="session-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div>
+          <div class="nota" style="font-size:16px; font-weight:bold; color:var(--verde-escuro);"></div>
+          <div class="count" style="font-size:12px; color:var(--cinza-texto); margin-top:2px;"></div>
+        </div>
+      </div>
+      <div class="row2" style="margin-top:14px;">
+        <button class="btn-primary btn-continuar" style="padding:12px;">Continuar</button>
+        <button class="btn-secondary btn-gerar-pdf" style="padding:11px;">Gerar PDF</button>
+      </div>
+      <button class="btn-ghost btn-danger btn-descartar" style="margin-top:10px; font-size:13px; padding:9px;">Descartar sessão</button>
+    </div>
+  </template>
 
   <!-- SCREEN: CAMERA -->
   <div class="screen" id="screen-camera">
@@ -216,6 +233,7 @@
       <button class="shutter-btn" id="btn-capture">Capturar foto</button>
       <p class="sensor-note" id="sensor-note">Leitura do sensor do celular · tolerância 85°–95°</p>
       <button class="btn-ghost" id="btn-enable-sensor" style="margin-top:10px; display:none;">Ativar sensor de nível</button>
+      <button class="btn-ghost" id="btn-finish-session-cam" style="margin-top:10px;">Finalizar sessão</button>
     </div>
   </div>
 
