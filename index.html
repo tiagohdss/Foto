@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>B. Tobace — Relatório fotográfico</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0B3D23">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- SCREEN: START -->
+  <div class="screen active" id="screen-start">
+    <div class="header">
+      <div class="brand">
+        <img src="assets/logo-mark-color.png" alt="">
+        <div>
+          <div class="brand-name">B. Tobace</div>
+          <div class="sub">Relatório fotográfico de postes</div>
+        </div>
+      </div>
+    </div>
+    <div class="body-pad">
+      <div id="no-session-block">
+        <h1>Nenhuma nota em andamento</h1>
+        <p class="hint">Digite o número da nota ou evento para começar a registrar os pontos.</p>
+        <div class="field">
+          <label class="field-label">Número da nota / evento</label>
+          <input type="tel" inputmode="numeric" id="input-nota" placeholder="Ex: 1131697">
+        </div>
+        <button class="btn-primary" id="btn-start-session">Iniciar sessão</button>
+      </div>
+
+      <div id="limit-block" style="display:none;">
+        <div style="background:#FDECEC; border:1px solid #F0B8B8; border-radius:10px; padding:16px 18px;">
+          <p style="font-size:14px; font-weight:bold; color:#791F1F; margin:0 0 4px;">Limite de 3 sessões atingido</p>
+          <p style="font-size:13px; color:#791F1F; margin:0;">Gere o PDF ou descarte alguma sessão abaixo antes de abrir uma nota nova.</p>
+        </div>
+      </div>
+
+      <div id="sessions-list" style="margin-top:22px;"></div>
+    </div>
+  </div>
+
+  <!-- TEMPLATE: cartão de sessão (usado via JS) -->
+  <template id="session-card-template">
+    <div class="session-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div>
+          <div class="nota" style="font-size:16px; font-weight:bold; color:var(--verde-escuro);"></div>
+          <div class="count" style="font-size:12px; color:var(--cinza-texto); margin-top:2px;"></div>
+        </div>
+      </div>
+      <div class="row2" style="margin-top:14px;">
+        <button class="btn-primary btn-continuar" style="padding:12px;">Continuar</button>
+        <button class="btn-secondary btn-gerar-pdf" style="padding:11px;">Gerar PDF</button>
+      </div>
+      <button class="btn-ghost btn-danger btn-descartar" style="margin-top:10px; font-size:13px; padding:9px;">Descartar sessão</button>
+    </div>
+  </template>
+
+  <!-- SCREEN: CAMERA -->
+  <div class="screen" id="screen-camera">
+    <div class="cam-wrap">
+      <div class="point-flag">
+        <span id="cam-nota-label">Nota —</span>
+        <span id="cam-point-label">Ponto —</span>
+      </div>
+      <video id="video" autoplay playsinline muted></video>
+      <div class="cam-overlay">
+        <div class="guide-box"></div>
+        <div class="guide-msg">Encaixe o poste inteiro, da base ao topo</div>
+        <div class="level-line-v-fixed"></div>
+        <div class="level-line-v" id="level-line-v"></div>
+        <div class="angle-badge" id="angle-badge">sensor indisponível</div>
+      </div>
+    </div>
+    <div class="cam-controls">
+      <button class="shutter-btn" id="btn-capture">Capturar foto</button>
+      <p class="sensor-note" id="sensor-note">Leitura do sensor do celular · tolerância 85°–95°</p>
+      <button class="btn-ghost" id="btn-enable-sensor" style="margin-top:10px; display:none;">Ativar sensor de nível</button>
+      <button class="btn-ghost" id="btn-finish-session-cam" style="margin-top:10px;">Finalizar sessão</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: CONFIRM PHOTO -->
+  <div class="screen" id="screen-confirm">
+    <div class="confirm-img-wrap">
+      <img id="confirm-img" src="" alt="">
+    </div>
+    <div class="body-pad" style="padding-top:16px;">
+      <div class="row2">
+        <button class="btn-secondary" id="btn-retake">Refazer foto</button>
+        <button class="btn-primary" id="btn-accept-photo">Usar esta foto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN: MORE PHOTO? -->
+  <div class="screen" id="screen-more">
+    <div class="header">
+      <div>
+        <div class="brand-name" id="more-nota-label">Nota —</div>
+        <div class="sub" id="more-point-label">Ponto —</div>
+      </div>
+    </div>
+    <div class="body-pad">
+      <h1>Mais uma foto deste ponto?</h1>
+      <p class="hint">Pode tirar uma segunda foto em outro ângulo do mesmo poste, se ajudar a documentar melhor.</p>
+      <div class="row2">
+        <button class="btn-primary" id="btn-more-yes">Sim, outro ângulo</button>
+        <button class="btn-secondary" id="btn-more-no">Não, continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN: POINT FORM (numero do ponto + observacao) -->
+  <div class="screen" id="screen-point-form">
+    <div class="header">
+      <div>
+        <div class="brand-name" id="pf-nota-label">Nota —</div>
+        <div class="sub">Confirme os dados do ponto</div>
+      </div>
+    </div>
+    <div class="body-pad">
+      <div class="field">
+        <label class="field-label">Número do ponto</label>
+        <input type="tel" inputmode="numeric" id="input-ponto">
+      </div>
+      <div class="field">
+        <label class="field-label">Observação (opcional)</label>
+        <textarea id="input-observacao" placeholder="Ex: estrutura reforçada, cruzeta trocada"></textarea>
+      </div>
+      <button class="btn-primary" id="btn-save-point">Salvar e ir para o próximo poste</button>
+      <button class="btn-ghost" id="btn-finish-nota" style="margin-top:10px;">Finalizar nota</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: REVIEW -->
+  <div class="screen" id="screen-review">
+    <div class="header">
+      <div>
+        <div class="brand-name">Revisar antes de gerar</div>
+        <div class="sub" id="review-nota-label">Nota —</div>
+      </div>
+    </div>
+    <div class="body-pad" id="review-list" style="flex:1; overflow-y:auto;">
+    </div>
+    <div class="footer-fixed">
+      <button class="btn-primary" id="btn-generate-pdf">Gerar relatório em PDF</button>
+      <button class="btn-ghost" id="btn-back-to-camera" style="margin-top:10px;">Voltar e tirar mais fotos</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: DONE -->
+  <div class="screen" id="screen-done">
+    <div class="body-pad center-msg">
+      <img src="assets/logo-mark-color.png" alt="" style="width:64px; height:64px; border-radius:50%; margin-bottom:20px;">
+      <h1 style="text-align:center;">Relatório gerado</h1>
+      <p class="hint">O PDF foi salvo. Compartilhe pelo WhatsApp do jeito que já costuma fazer.</p>
+      <div class="stack" style="margin-top:20px;">
+        <button class="btn-primary" id="btn-share-pdf">Compartilhar PDF</button>
+        <button class="btn-secondary" id="btn-download-pdf">Baixar PDF novamente</button>
+        <button class="btn-ghost" id="btn-new-session">Iniciar nova nota</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
