@@ -7,8 +7,37 @@ const MAX_PHOTO_WIDTH = 1100;
 const SEARCH_THRESHOLD = 5; // a partir de quantas notas o campo de busca aparece
 const LOGO_MARK_URL = 'assets/logo-mark-color.png';
 
+/* Checklist do setor de Viabilidade — cada pergunta define se o campo de
+   detalhe obrigatório aparece quando a resposta é "sim" ou "não" */
+const VIAB_CHECKLIST = [
+  { id:'jumper', label:'Há possibilidade de abrir/fechar o jumper LV?', detailOn:'sim', detailLabel:'Detalhar situação e qual o ponto para abertura (com pisca ou linha viva)' },
+  { id:'chave_definitiva', label:'É necessário instalar chave definitiva?', detailOn:'sim', detailLabel:'Informar pontos passíveis de instalação' },
+  { id:'premontagem', label:'Há necessidade ou possibilidade de pré montagem de estruturas?', detailOn:'sim', detailLabel:'Detalhar' },
+  { id:'acesso_chuva', label:'Todos os pontos têm acesso quando está chovendo?', detailOn:'nao', detailLabel:'Detalhar ponto sem acesso e prováveis alternativas' },
+  { id:'acesso_impedido', label:'Há algum acesso impedido por porteira, ponte, estrada, etc?', detailOn:'sim', detailLabel:'Detalhar situação e solução', extraContacts:true },
+  { id:'aterramento', label:'Existe ponto de aterramento ou inversão de fases em alguma estrutura?', detailOn:'nao', detailLabel:'Detalhar onde e quantos pontos serão necessários para execução da obra' },
+  { id:'abelha', label:'Existe abelha e/ou insetos no local?', detailOn:'sim', detailLabel:'Detalhar situação e solução' },
+  { id:'ocupantes', label:'Existem ocupantes?', detailOn:'sim', detailLabel:'Informar quantos ocupantes estão em tangente, quantos estão em encabeçamento e informar questões de travessia' },
+  { id:'poda', label:'É necessário realizar podas em árvores?', detailOn:'sim', detailLabel:'Detalhar quantidade e entre quais pontos existem e se há árvores protegidas — informar mesmo que previstas em projetos' },
+  { id:'galhos', label:'É necessário a recolha dos galhos?', detailOn:'sim', detailLabel:'Detalhar quantidade aproximada de recurso' },
+  { id:'plantacoes', label:'Há plantações que impedem acesso dos veículos ao poste a ser substituído?', detailOn:'sim', detailLabel:'Detalhar situação e solução — informar se sabe a data da colheita ou se tem acesso por outro local' },
+  { id:'estai', label:'Algum poste a ser substituído tem estai de cruzeta?', detailOn:'sim', detailLabel:'Detalhar situação e solução e se o mesmo está seccionado' },
+  { id:'cerca', label:'No trecho da obra há alguma cerca não aterrada e não seccionada?', detailOn:'sim', detailLabel:'Detalhar situação e solução' },
+  { id:'projeto_campo', label:'O projeto está de acordo com o campo?', detailOn:'nao', detailLabel:'Detalhar pontos divergentes' },
+  { id:'feiras', label:'Nos pontos de trabalho existem feiras, eventos, ou condições atípicas no trânsito até o local?', detailOn:'sim', detailLabel:'Detalhar situação e solução' },
+  { id:'clientes_criticos', label:'Há clientes críticos no trecho de manobra, como hospitais, escolas, indústrias?', detailOn:'sim', detailLabel:'Detalhar situação e solução' },
+  { id:'autorizacao', label:'Há necessidade de autorização de concessionárias ou do DER para execução (também isolação de área específica)?', detailOn:'sim', detailLabel:'Detalhar situação e solução' },
+  { id:'veiculos_compridos', label:'No trajeto ou no local os veículos tracionados (mais longos) conseguem chegar no local (sem acesso ou somente toco)?', detailOn:'sim', detailLabel:'Detalhar situação e solução' },
+  { id:'redes_subterraneas', label:'Há redes subterrâneas?', detailOn:'sim', detailLabel:'Detalhar situação (quando houver rede subterrânea de distribuição, transmissão, particulares, água, gás e esgoto)' },
+  { id:'espacadores', label:'Há espaçadores secundários ou primários para retirar/instalar/reinstalar durante a execução?', detailOn:'sim', detailLabel:'Detalhar situação e solução' },
+  { id:'rede_secundaria', label:'Algum ponto terá alguma rede secundária invadindo o trecho?', detailOn:'sim', detailLabel:'Detalhar situação e solução (verificar mediante a proposta de manobra)' },
+  { id:'sinal', label:'Durante a viabilidade há sinal de celular ou rádio nos pontos de trabalho e chave para isolação?', detailOn:'nao', detailLabel:'Detalhar o último ponto onde há sinal de celular' },
+  { id:'redes_terceiros', label:'No trecho de trabalho há redes aéreas de transmissão de terceiros e/ou particulares?', detailOn:'sim', detailLabel:'Detalhar situação e solução' }
+];
+
 /* ===================== Estado ===================== */
-let sessions = [];           // [{ id, nota, points:[{ponto, photos:[...], observacao}] }]
+let selectedSetor = 'medicao'; // setor escolhido na tela inicial pra criar uma nota nova
+let sessions = [];           // [{ id, nota, setor, points:[{ponto, photos:[...], observacao}], viabForm, formPreenchido }]
 let activeSessionId = null;  // sessão sendo editada agora na câmera/formulário
 let currentPhotos = [];      // fotos do ponto que está sendo montado agora
 let editingPointIndex = null; // índice do ponto sendo editado na revisão (null = criando novo)
@@ -229,6 +258,7 @@ function renderStartScreen(){
   visibleSessions.forEach(s=>{
     const node = template.content.cloneNode(true);
     node.querySelector('.nota').textContent = 'Nota ' + s.nota + (s.pdfGerado ? ' ✓' : '');
+    node.querySelector('.setor-tag').textContent = s.setor === 'viabilidade' ? 'Viabilidade' : 'Medição';
     const countEl = node.querySelector('.count');
     if(s.compartilhadoEm){
       const ts = formatTimestamp(new Date(s.compartilhadoEm));
@@ -247,7 +277,7 @@ function renderStartScreen(){
     node.querySelector('.btn-gerar-pdf').addEventListener('click', ()=>{
       if(!s.points.length){ toast('Essa sessão ainda não tem nenhum ponto registrado.'); return; }
       activeSessionId = s.id;
-      openReview();
+      proceedToReviewOrForm();
     });
     node.querySelector('.btn-descartar').addEventListener('click', async ()=>{
       if(confirm('Descartar a sessão da nota ' + s.nota + '? As fotos ainda não geradas em PDF serão perdidas.')){
@@ -263,6 +293,13 @@ function renderStartScreen(){
 }
 
 $('input-search-nota').addEventListener('input', renderStartScreen);
+
+document.querySelectorAll('.setor-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    selectedSetor = btn.dataset.setor;
+    document.querySelectorAll('.setor-btn').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
 
 $('btn-start-session').addEventListener('click', async ()=>{
   const val = $('input-nota').value.trim();
@@ -280,7 +317,7 @@ $('btn-start-session').addEventListener('click', async ()=>{
     return;
   }
 
-  const novaSessao = { id: genId(), nota: val, points: [] };
+  const novaSessao = { id: genId(), nota: val, setor: selectedSetor, points: [], formPreenchido: false };
   sessions.push(novaSessao);
   activeSessionId = novaSessao.id;
   await saveSessions();
@@ -316,7 +353,22 @@ function goToCameraForNewPoint(){
   $('cam-point-label').textContent = 'Sugestão: ponto ' + nextPontoSuggestion();
   showScreen('screen-camera');
   startCamera();
-  setupOrientationButtonIfNeeded();
+  applySectorCameraUI(s.setor);
+}
+
+/* Medição usa o nível 90° (linhas + selo de ângulo); Viabilidade não —
+   só grava hora e localização, sem checagem de prumo */
+function applySectorCameraUI(setor){
+  const isMedicao = setor !== 'viabilidade';
+  $('level-line-v-fixed').style.display = isMedicao ? 'block' : 'none';
+  $('level-line-v').style.display = isMedicao ? 'block' : 'none';
+  $('angle-badge').style.display = isMedicao ? 'block' : 'none';
+  $('sensor-note').style.display = isMedicao ? 'block' : 'none';
+  if(isMedicao){
+    setupOrientationButtonIfNeeded();
+  } else {
+    $('btn-enable-sensor').style.display = 'none';
+  }
 }
 
 $('btn-capture').addEventListener('click', capturePhoto);
@@ -353,39 +405,45 @@ function capturePhoto(){
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, w, h);
 
-  const angle = currentAngle;
+  const s = getActiveSession();
+  const isMedicao = !s || s.setor !== 'viabilidade';
+
+  const angle = isMedicao ? currentAngle : null;
   const outOfLevel = angle !== null && (angle < TOL_MIN || angle > TOL_MAX);
   const ts = formatTimestamp(new Date());
 
-  /* linhas de nível gravadas na foto (exigência da GED): verde tracejada
-     fixa como referência de vertical reta + vermelha acompanhando a
-     leitura do sensor no momento exato da captura */
+  /* linhas de nível gravadas na foto (exigência da GED, só no setor de
+     Medição): verde tracejada fixa como referência de vertical reta +
+     vermelha acompanhando a leitura do sensor no momento da captura.
+     Viabilidade não usa nível — só hora e localização na foto. */
   const lineTop = h * 0.05;
   const lineBottom = h * 0.95;
   const centerX = w / 2;
   const centerY = h / 2;
 
-  ctx.save();
-  ctx.strokeStyle = '#5DCAA5';
-  ctx.lineWidth = Math.max(2, Math.round(w*0.0025));
-  ctx.setLineDash([Math.round(h*0.014), Math.round(h*0.010)]);
-  ctx.beginPath();
-  ctx.moveTo(centerX, lineTop);
-  ctx.lineTo(centerX, lineBottom);
-  ctx.stroke();
-  ctx.restore();
+  if(isMedicao){
+    ctx.save();
+    ctx.strokeStyle = '#5DCAA5';
+    ctx.lineWidth = Math.max(2, Math.round(w*0.0025));
+    ctx.setLineDash([Math.round(h*0.014), Math.round(h*0.010)]);
+    ctx.beginPath();
+    ctx.moveTo(centerX, lineTop);
+    ctx.lineTo(centerX, lineBottom);
+    ctx.stroke();
+    ctx.restore();
 
-  const gammaAtCapture = smoothedGamma !== null ? smoothedGamma : 0;
-  ctx.save();
-  ctx.translate(centerX, centerY);
-  ctx.rotate((-gammaAtCapture) * Math.PI / 180);
-  ctx.strokeStyle = '#E24B4A';
-  ctx.lineWidth = Math.max(3, Math.round(w*0.004));
-  ctx.beginPath();
-  ctx.moveTo(0, -(centerY - lineTop));
-  ctx.lineTo(0, (lineBottom - centerY));
-  ctx.stroke();
-  ctx.restore();
+    const gammaAtCapture = smoothedGamma !== null ? smoothedGamma : 0;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate((-gammaAtCapture) * Math.PI / 180);
+    ctx.strokeStyle = '#E24B4A';
+    ctx.lineWidth = Math.max(3, Math.round(w*0.004));
+    ctx.beginPath();
+    ctx.moveTo(0, -(centerY - lineTop));
+    ctx.lineTo(0, (lineBottom - centerY));
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if(angle !== null){
     const angleText = Math.round(angle) + '°';
@@ -522,7 +580,7 @@ $('btn-finish-session-cam').addEventListener('click', ()=>{
     return;
   }
   stopCamera();
-  openReview();
+  proceedToReviewOrForm();
 });
 
 /* ===================== Formulário do ponto ===================== */
@@ -564,11 +622,190 @@ $('btn-finish-nota').addEventListener('click', async ()=>{
   if(currentPhotos.length){
     if(!(await commitCurrentPoint())) return;
   }
+  proceedToReviewOrForm();
+});
+
+/* ===================== Viabilidade: decide se precisa do formulário ===================== */
+function proceedToReviewOrForm(){
   const s = getActiveSession();
-  if(!s || !s.points.length){
-    toast('Registre ao menos um ponto antes de finalizar.');
+  if(!s) return;
+  if(s.setor === 'viabilidade' && !s.formPreenchido){
+    openViabForm();
+  } else {
+    openReview();
+  }
+}
+
+/* ===================== Formulário de Viabilidade ===================== */
+function openViabForm(){
+  const s = getActiveSession();
+  if(!s) return;
+  const draft = s.viabForm || {};
+
+  $('viab-responsavel').value = draft.responsavel || '';
+  $('viab-telefone').value = draft.telefone || '';
+  $('viab-chaves-isolacao').value = draft.chavesIsolacao || '';
+  $('viab-chaves-referencia').value = draft.chavesReferencia || '';
+  $('viab-janela').value = draft.janela || '';
+  $('viab-equipes').value = draft.equipes || '';
+  $('viab-tempo-deslocamento').value = draft.tempoDeslocamento || '';
+  $('viab-tempo-previsto').value = draft.tempoPrevisto || '';
+  document.querySelectorAll('.melhor-dia-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.valor === draft.melhorDia);
+  });
+
+  renderViabChecklist(draft.checklist || {});
+  $('viab-observacoes').value = draft.observacoes || '';
+
+  showScreen('screen-viab-1');
+}
+
+document.querySelectorAll('.melhor-dia-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.melhor-dia-btn').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
+function renderViabChecklist(respostasSalvas){
+  const list = $('viab-checklist-list');
+  list.innerHTML = '';
+  VIAB_CHECKLIST.forEach(q=>{
+    const salvo = respostasSalvas[q.id] || {};
+    const div = document.createElement('div');
+    div.className = 'checklist-item';
+    div.dataset.qid = q.id;
+    div.innerHTML = `
+      <div class="q-label">${q.label}</div>
+      <div class="q-toggle">
+        <button type="button" class="q-btn q-sim" data-valor="sim">SIM</button>
+        <button type="button" class="q-btn q-nao" data-valor="nao">NÃO</button>
+      </div>
+      <div class="q-detail" style="display:none;">
+        <label>${q.detailLabel}</label>
+        <textarea class="q-detail-text"></textarea>
+        ${q.extraContacts ? `
+          <div class="q-contacts">
+            <input type="text" class="q-contact1" placeholder="Contato 1 — nome e telefone">
+            <input type="text" class="q-contact2" placeholder="Contato 2 — nome e telefone">
+          </div>` : ''}
+      </div>
+    `;
+    const btnSim = div.querySelector('.q-sim');
+    const btnNao = div.querySelector('.q-nao');
+    const detailBox = div.querySelector('.q-detail');
+
+    function selecionar(valor){
+      btnSim.classList.toggle('selected-sim', valor === 'sim');
+      btnNao.classList.toggle('selected-nao', valor === 'nao');
+      div.dataset.resposta = valor;
+      detailBox.style.display = (valor === q.detailOn) ? 'block' : 'none';
+    }
+
+    btnSim.addEventListener('click', ()=> selecionar('sim'));
+    btnNao.addEventListener('click', ()=> selecionar('nao'));
+
+    if(salvo.resposta){
+      selecionar(salvo.resposta);
+      div.querySelector('.q-detail-text').value = salvo.detalhe || '';
+      if(q.extraContacts){
+        div.querySelector('.q-contact1').value = salvo.contato1 || '';
+        div.querySelector('.q-contact2').value = salvo.contato2 || '';
+      }
+    }
+
+    list.appendChild(div);
+  });
+}
+
+$('btn-viab-1-next').addEventListener('click', ()=>{
+  const camposObrigatorios = ['viab-responsavel','viab-telefone','viab-chaves-isolacao','viab-chaves-referencia','viab-janela','viab-equipes','viab-tempo-deslocamento','viab-tempo-previsto'];
+  for(const id of camposObrigatorios){
+    if(!$(id).value.trim()){
+      toast('Preencha todos os campos antes de continuar.');
+      $(id).focus();
+      return;
+    }
+  }
+  const melhorDiaBtn = document.querySelector('.melhor-dia-btn.active');
+  if(!melhorDiaBtn){
+    toast('Selecione o melhor dia para execução.');
     return;
   }
+  showScreen('screen-viab-2');
+});
+
+$('btn-viab-2-back').addEventListener('click', ()=> showScreen('screen-viab-1'));
+
+$('btn-viab-2-next').addEventListener('click', ()=>{
+  const items = document.querySelectorAll('#viab-checklist-list .checklist-item');
+  for(const div of items){
+    const resposta = div.dataset.resposta;
+    if(!resposta){
+      toast('Responda todas as perguntas do checklist antes de continuar.');
+      div.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+    const q = VIAB_CHECKLIST.find(x => x.id === div.dataset.qid);
+    if(resposta === q.detailOn){
+      const detalhe = div.querySelector('.q-detail-text').value.trim();
+      if(!detalhe){
+        toast('Preencha o detalhamento da pergunta: ' + q.label);
+        div.scrollIntoView({behavior:'smooth', block:'center'});
+        return;
+      }
+      if(q.extraContacts){
+        const c1 = div.querySelector('.q-contact1').value.trim();
+        const c2 = div.querySelector('.q-contact2').value.trim();
+        if(!c1 || !c2){
+          toast('Preencha os dois contatos responsáveis.');
+          div.scrollIntoView({behavior:'smooth', block:'center'});
+          return;
+        }
+      }
+    }
+  }
+  showScreen('screen-viab-3');
+});
+
+$('btn-viab-3-back').addEventListener('click', ()=> showScreen('screen-viab-2'));
+
+$('btn-viab-3-finish').addEventListener('click', async ()=>{
+  const observacoes = $('viab-observacoes').value.trim();
+  if(!observacoes){
+    toast('Preencha as observações gerais antes de concluir.');
+    return;
+  }
+
+  const s = getActiveSession();
+  if(!s) return;
+
+  const checklist = {};
+  document.querySelectorAll('#viab-checklist-list .checklist-item').forEach(div=>{
+    const qid = div.dataset.qid;
+    checklist[qid] = {
+      resposta: div.dataset.resposta,
+      detalhe: div.querySelector('.q-detail-text').value.trim(),
+      contato1: div.querySelector('.q-contact1') ? div.querySelector('.q-contact1').value.trim() : undefined,
+      contato2: div.querySelector('.q-contact2') ? div.querySelector('.q-contact2').value.trim() : undefined
+    };
+  });
+
+  s.viabForm = {
+    responsavel: $('viab-responsavel').value.trim(),
+    telefone: $('viab-telefone').value.trim(),
+    chavesIsolacao: $('viab-chaves-isolacao').value.trim(),
+    chavesReferencia: $('viab-chaves-referencia').value.trim(),
+    janela: $('viab-janela').value.trim(),
+    equipes: $('viab-equipes').value.trim(),
+    tempoDeslocamento: $('viab-tempo-deslocamento').value.trim(),
+    tempoPrevisto: $('viab-tempo-previsto').value.trim(),
+    melhorDia: document.querySelector('.melhor-dia-btn.active').dataset.valor,
+    checklist,
+    observacoes
+  };
+  s.formPreenchido = true;
+  await saveSessions();
+  toast('Formulário concluído.');
   openReview();
 });
 
@@ -611,8 +848,11 @@ function openReview(){
       }
     });
   });
+  $('btn-edit-viab-form').style.display = (s.setor === 'viabilidade') ? 'block' : 'none';
   showScreen('screen-review');
 }
+
+$('btn-edit-viab-form').addEventListener('click', openViabForm);
 
 $('btn-back-to-camera').addEventListener('click', goToCameraForNewPoint);
 
@@ -692,6 +932,129 @@ async function loadLogoAsDataUrl(){
   });
 }
 
+function addViabilidadeFormPages(doc, sessionObj, logo, pageW, pageH){
+  const verdeEscuro = [11,61,35];
+  const verde = [35,121,79];
+  let y = 0;
+  let pageNum = 0;
+
+  function newPage(){
+    if(pageNum > 0) doc.addPage();
+    pageNum++;
+    doc.setFillColor(...verdeEscuro);
+    doc.rect(0,0,pageW,54,'F');
+    try{ doc.addImage(logo, 'PNG', 28, 12, 30, 30); }catch(e){}
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(13);
+    doc.text('B. Tobace', 68, 27);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.setTextColor(159,225,203);
+    doc.text('Formulário de Viabilidade', 68, 40);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.setTextColor(255,255,255);
+    doc.text('Nota ' + sessionObj.nota, pageW-28, 27, {align:'right'});
+    y = 80;
+  }
+
+  function ensureSpace(neededHeight){
+    if(y + neededHeight > pageH - 40) newPage();
+  }
+
+  function sectionTitle(text){
+    ensureSpace(30);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...verdeEscuro);
+    doc.text(text, 28, y);
+    y += 6;
+    doc.setDrawColor(...verde);
+    doc.setLineWidth(1.5);
+    doc.line(28, y, pageW-28, y);
+    y += 18;
+  }
+
+  function fieldLine(label, value){
+    ensureSpace(16);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(9);
+    doc.setTextColor(90,90,90);
+    doc.text(label + ':', 28, y);
+    const labelW = doc.getTextWidth(label + ': ');
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(30,30,30);
+    const wrapped = doc.splitTextToSize(value || '—', pageW - 56 - labelW);
+    doc.text(wrapped, 28 + labelW, y);
+    y += Math.max(14, wrapped.length * 12);
+  }
+
+  newPage();
+  const f = sessionObj.viabForm || {};
+
+  sectionTitle('Identificação');
+  fieldLine('Responsável pela viabilidade', f.responsavel);
+  fieldLine('Telefone para contato', f.telefone);
+  fieldLine('Chaves previstas para isolação/trafos', f.chavesIsolacao);
+  fieldLine('Chaves previstas para referência (LV)', f.chavesReferencia);
+  fieldLine('Janela prevista para execução', f.janela);
+  fieldLine('Equipes previstas para execução', f.equipes);
+  fieldLine('Tempo médio de deslocamento da base até a obra', f.tempoDeslocamento);
+  fieldLine('Tempo previsto para execução', f.tempoPrevisto);
+  fieldLine('Melhor dia para execução', f.melhorDia === 'fds' ? 'Final de semana' : 'Dia de semana');
+
+  y += 10;
+  sectionTitle('Checklist técnico');
+
+  VIAB_CHECKLIST.forEach(q=>{
+    const resp = (f.checklist && f.checklist[q.id]) || {};
+    const respostaTexto = resp.resposta === 'sim' ? 'SIM' : (resp.resposta === 'nao' ? 'NÃO' : '—');
+    const precisaAtencao = resp.resposta === q.detailOn;
+
+    ensureSpace(30);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...verdeEscuro);
+    const qWrapped = doc.splitTextToSize(q.label, pageW - 56 - 40);
+    doc.text(qWrapped, 28, y);
+
+    doc.setFontSize(9);
+    if(precisaAtencao){ doc.setTextColor(226,75,74); } else { doc.setTextColor(99,153,34); }
+    doc.text(respostaTexto, pageW-28, y, {align:'right'});
+    y += qWrapped.length * 11 + 4;
+
+    if(precisaAtencao && resp.detalhe){
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(9);
+      doc.setTextColor(60,60,60);
+      const detWrapped = doc.splitTextToSize('Detalhe: ' + resp.detalhe, pageW-56);
+      ensureSpace(detWrapped.length*11+4);
+      doc.text(detWrapped, 28, y);
+      y += detWrapped.length*11+4;
+
+      if(q.extraContacts && (resp.contato1 || resp.contato2)){
+        const contatosTexto = 'Contatos: ' + [resp.contato1, resp.contato2].filter(Boolean).join(' · ');
+        const cWrapped = doc.splitTextToSize(contatosTexto, pageW-56);
+        ensureSpace(cWrapped.length*11+4);
+        doc.text(cWrapped, 28, y);
+        y += cWrapped.length*11+4;
+      }
+    }
+    y += 6;
+  });
+
+  y += 10;
+  sectionTitle('Observações gerais');
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(10);
+  doc.setTextColor(30,30,30);
+  const obsWrapped = doc.splitTextToSize(f.observacoes || '—', pageW-56);
+  ensureSpace(obsWrapped.length*13);
+  doc.text(obsWrapped, 28, y);
+  y += obsWrapped.length*13;
+}
+
 async function generatePdf(sessionObj){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
@@ -703,8 +1066,12 @@ async function generatePdf(sessionObj){
 
   const logo = await loadLogoAsDataUrl();
 
+  if(sessionObj.setor === 'viabilidade'){
+    addViabilidadeFormPages(doc, sessionObj, logo, pageW, pageH);
+  }
+
   sessionObj.points.forEach((p, idx)=>{
-    if(idx>0) doc.addPage();
+    if(idx>0 || sessionObj.setor === 'viabilidade') doc.addPage();
 
     /* cabeçalho */
     doc.setFillColor(...verdeEscuro);

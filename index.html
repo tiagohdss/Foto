@@ -29,6 +29,15 @@
       <div id="no-session-block">
         <h1>Nenhuma nota em andamento</h1>
         <p class="hint">Digite o número da nota ou evento para começar a registrar os pontos.</p>
+
+        <div class="field">
+          <label class="field-label">Setor</label>
+          <div class="row2" id="setor-toggle">
+            <button type="button" class="btn-secondary setor-btn active" data-setor="medicao">Medição</button>
+            <button type="button" class="btn-secondary setor-btn" data-setor="viabilidade">Viabilidade</button>
+          </div>
+        </div>
+
         <div class="field">
           <label class="field-label">Número da nota / evento</label>
           <input type="tel" inputmode="numeric" id="input-nota" placeholder="Ex: 1131697">
@@ -52,6 +61,7 @@
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
         <div>
           <div class="nota" style="font-size:16px; font-weight:bold; color:var(--verde-escuro);"></div>
+          <div class="setor-tag" style="font-size:11px; font-weight:bold; color:var(--verde); text-transform:uppercase; margin-top:2px;"></div>
           <div class="count" style="font-size:12px; color:var(--cinza-texto); margin-top:2px;"></div>
         </div>
       </div>
@@ -74,7 +84,7 @@
       <div class="cam-overlay">
         <div class="guide-box"></div>
         <div class="guide-msg">Encaixe o poste inteiro, da base ao topo</div>
-        <div class="level-line-v-fixed"></div>
+        <div class="level-line-v-fixed" id="level-line-v-fixed"></div>
         <div class="level-line-v" id="level-line-v"></div>
         <div class="angle-badge" id="angle-badge">sensor indisponível</div>
       </div>
@@ -141,6 +151,95 @@
     </div>
   </div>
 
+  <!-- SCREEN: VIABILIDADE — PASSO 1: IDENTIFICAÇÃO -->
+  <div class="screen" id="screen-viab-1">
+    <div class="header">
+      <div>
+        <div class="brand-name">Formulário de Viabilidade</div>
+        <div class="sub">Passo 1 de 3 — Identificação</div>
+      </div>
+    </div>
+    <div class="body-pad" style="flex:1; overflow-y:auto;">
+      <div class="field">
+        <label class="field-label">Responsável pela viabilidade *</label>
+        <input type="text" id="viab-responsavel">
+      </div>
+      <div class="field">
+        <label class="field-label">Telefone para contato *</label>
+        <input type="tel" id="viab-telefone">
+      </div>
+      <div class="field">
+        <label class="field-label">Chaves previstas para isolação/trafos *</label>
+        <input type="text" id="viab-chaves-isolacao">
+      </div>
+      <div class="field">
+        <label class="field-label">Chaves previstas para referência (LV) *</label>
+        <input type="text" id="viab-chaves-referencia">
+      </div>
+      <div class="field">
+        <label class="field-label">Janela prevista para execução *</label>
+        <input type="text" id="viab-janela">
+      </div>
+      <div class="field">
+        <label class="field-label">Equipes previstas para execução *</label>
+        <input type="text" id="viab-equipes">
+      </div>
+      <div class="field">
+        <label class="field-label">Tempo médio de deslocamento da base até a obra *</label>
+        <input type="text" id="viab-tempo-deslocamento">
+      </div>
+      <div class="field">
+        <label class="field-label">Tempo previsto para execução (ex: 4hrs) *</label>
+        <input type="text" id="viab-tempo-previsto">
+      </div>
+      <div class="field">
+        <label class="field-label">Melhor dia para execução *</label>
+        <div class="row2">
+          <button type="button" class="btn-secondary melhor-dia-btn" data-valor="semana">Dia de semana</button>
+          <button type="button" class="btn-secondary melhor-dia-btn" data-valor="fds">Final de semana</button>
+        </div>
+      </div>
+    </div>
+    <div class="footer-fixed">
+      <button class="btn-primary" id="btn-viab-1-next">Próximo — Checklist técnico</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: VIABILIDADE — PASSO 2: CHECKLIST -->
+  <div class="screen" id="screen-viab-2">
+    <div class="header">
+      <div>
+        <div class="brand-name">Formulário de Viabilidade</div>
+        <div class="sub">Passo 2 de 3 — Checklist técnico</div>
+      </div>
+    </div>
+    <div class="body-pad" id="viab-checklist-list" style="flex:1; overflow-y:auto;"></div>
+    <div class="footer-fixed">
+      <button class="btn-ghost" id="btn-viab-2-back" style="margin-bottom:10px;">Voltar</button>
+      <button class="btn-primary" id="btn-viab-2-next">Próximo — Observações</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: VIABILIDADE — PASSO 3: OBSERVAÇÕES -->
+  <div class="screen" id="screen-viab-3">
+    <div class="header">
+      <div>
+        <div class="brand-name">Formulário de Viabilidade</div>
+        <div class="sub">Passo 3 de 3 — Observações gerais</div>
+      </div>
+    </div>
+    <div class="body-pad">
+      <div class="field">
+        <label class="field-label">Preencher com informações necessárias / detalhar a obra, trajeto, impressões, dificuldades, etc *</label>
+        <textarea id="viab-observacoes" style="min-height:180px;"></textarea>
+      </div>
+    </div>
+    <div class="footer-fixed">
+      <button class="btn-ghost" id="btn-viab-3-back" style="margin-bottom:10px;">Voltar</button>
+      <button class="btn-primary" id="btn-viab-3-finish">Concluir formulário</button>
+    </div>
+  </div>
+
   <!-- SCREEN: REVIEW -->
   <div class="screen" id="screen-review">
     <div class="header">
@@ -153,6 +252,7 @@
     </div>
     <div class="footer-fixed">
       <button class="btn-primary" id="btn-generate-pdf">Gerar relatório em PDF</button>
+      <button class="btn-ghost" id="btn-edit-viab-form" style="margin-top:10px; display:none;">Editar formulário de Viabilidade</button>
       <button class="btn-ghost" id="btn-back-to-camera" style="margin-top:10px;">Voltar e tirar mais fotos</button>
     </div>
   </div>

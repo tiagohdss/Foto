@@ -148,3 +148,26 @@
     background:var(--verde-escuro); color:#fff; padding:12px 20px; border-radius:8px;
     font-size:14px; z-index:999; max-width:90%; text-align:center; display:none;
   }
+
+  /* Seletor de setor e "melhor dia" — botão vira verde quando selecionado */
+  .setor-btn.active, .melhor-dia-btn.active{
+    background: var(--verde); color:#fff; border-color:var(--verde);
+  }
+
+  /* Checklist de Viabilidade */
+  .checklist-item{
+    border:1px solid var(--cinza-borda); border-radius:10px; padding:14px; margin-bottom:12px;
+  }
+  .checklist-item .q-label{ font-size:14px; font-weight:bold; color:var(--verde-escuro); margin-bottom:10px; line-height:1.4; }
+  .checklist-item .q-toggle{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .checklist-item .q-btn{
+    padding:10px; border-radius:8px; border:1.5px solid var(--cinza-borda); background:#fff;
+    font-size:14px; font-weight:bold; color:var(--cinza-texto);
+  }
+  .checklist-item .q-btn.selected-sim{ background:#639922; color:#fff; border-color:#639922; }
+  .checklist-item .q-btn.selected-nao{ background:var(--vermelho); color:#fff; border-color:var(--vermelho); }
+  .checklist-item .q-detail{ margin-top:10px; }
+  .checklist-item .q-detail label{ font-size:12px; color:var(--cinza-texto); display:block; margin-bottom:6px; }
+  .checklist-item .q-detail textarea{ min-height:70px; }
+  .checklist-item .q-contacts{ margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+  .checklist-item .q-contacts input{ font-size:14px; padding:10px; }
