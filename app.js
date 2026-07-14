@@ -4,7 +4,7 @@ const OLD_STORAGE_KEY = 'tobace_relatorio_sessao'; // formato antigo (1 sessão 
 const TOL_MIN = 85;
 const TOL_MAX = 95;
 const MAX_PHOTO_WIDTH = 1100;
-const MAX_SESSIONS = 3;
+const SEARCH_THRESHOLD = 5; // a partir de quantas notas o campo de busca aparece
 const LOGO_MARK_URL = 'assets/logo-mark-color.png';
 
 /* ===================== Estado ===================== */
@@ -214,18 +214,19 @@ async function initStartScreen(){
 }
 
 function renderStartScreen(){
-  const noSession = $('no-session-block');
-  const limitBlock = $('limit-block');
-  const atLimit = sessions.length >= MAX_SESSIONS;
+  const searchTerm = $('input-search-nota').value.trim().toLowerCase();
+  const searchBlock = $('search-block');
+  searchBlock.style.display = sessions.length > SEARCH_THRESHOLD ? 'block' : 'none';
 
-  noSession.style.display = atLimit ? 'none' : 'block';
-  limitBlock.style.display = atLimit ? 'block' : 'none';
+  const visibleSessions = searchTerm
+    ? sessions.filter(s => s.nota.toLowerCase().includes(searchTerm))
+    : sessions;
 
   const list = $('sessions-list');
   list.innerHTML = '';
   const template = $('session-card-template');
 
-  sessions.forEach(s=>{
+  visibleSessions.forEach(s=>{
     const node = template.content.cloneNode(true);
     node.querySelector('.nota').textContent = 'Nota ' + s.nota + (s.pdfGerado ? ' ✓' : '');
     const countEl = node.querySelector('.count');
@@ -257,15 +258,28 @@ function renderStartScreen(){
     });
     list.appendChild(node);
   });
+
+  $('no-results-msg').style.display = (searchTerm && visibleSessions.length === 0) ? 'block' : 'none';
 }
 
+$('input-search-nota').addEventListener('input', renderStartScreen);
+
 $('btn-start-session').addEventListener('click', async ()=>{
-  if(sessions.length >= MAX_SESSIONS){
-    toast('Limite de 3 sessões atingido. Descarte ou gere o PDF de alguma antes de continuar.');
-    return;
-  }
   const val = $('input-nota').value.trim();
   if(!val){ toast('Digite o número da nota para continuar.'); return; }
+
+  const existente = sessions.find(s => s.nota.trim().toLowerCase() === val.toLowerCase());
+  if(existente){
+    const usar = confirm('A nota ' + val + ' já foi criada (' + existente.points.length + ' pontos registrados). Deseja abrir essa sessão em vez de criar uma nova?');
+    if(usar){
+      activeSessionId = existente.id;
+      $('input-nota').value = '';
+      startGeoWatch();
+      goToCameraForNewPoint();
+    }
+    return;
+  }
+
   const novaSessao = { id: genId(), nota: val, points: [] };
   sessions.push(novaSessao);
   activeSessionId = novaSessao.id;

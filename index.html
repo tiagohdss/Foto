@@ -36,14 +36,13 @@
         <button class="btn-primary" id="btn-start-session">Iniciar sessão</button>
       </div>
 
-      <div id="limit-block" style="display:none;">
-        <div style="background:#FDECEC; border:1px solid #F0B8B8; border-radius:10px; padding:16px 18px;">
-          <p style="font-size:14px; font-weight:bold; color:#791F1F; margin:0 0 4px;">Limite de 3 sessões atingido</p>
-          <p style="font-size:13px; color:#791F1F; margin:0;">Gere o PDF ou descarte alguma sessão abaixo antes de abrir uma nota nova.</p>
-        </div>
+      <div id="search-block" style="display:none; margin-top:22px;">
+        <input type="text" id="input-search-nota" placeholder="Buscar nota..." inputmode="numeric"
+          style="width:100%; border:1px solid var(--cinza-borda); border-radius:8px; padding:12px; font-size:15px; background:#fafaf8;">
       </div>
 
-      <div id="sessions-list" style="margin-top:22px;"></div>
+      <div id="sessions-list" style="margin-top:16px;"></div>
+      <p id="no-results-msg" class="hint" style="display:none; text-align:center; margin-top:20px;">Nenhuma nota encontrada com esse número.</p>
     </div>
   </div>
 
