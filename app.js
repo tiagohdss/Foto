@@ -1,12 +1,15 @@
 /* ===================== Constantes ===================== */
-const STORAGE_KEY = 'tobace_relatorio_sessao';
+const STORAGE_KEY = 'tobace_relatorio_sessoes';
+const OLD_STORAGE_KEY = 'tobace_relatorio_sessao'; // formato antigo (1 sessão só), migrado se existir
 const TOL_MIN = 85;
 const TOL_MAX = 95;
 const MAX_PHOTO_WIDTH = 1280;
+const MAX_SESSIONS = 3;
 const LOGO_MARK_URL = 'assets/logo-mark-color.png';
 
 /* ===================== Estado ===================== */
-let session = null;          // { nota, points: [{ponto, photos:[{dataUrl, angle, outOfLevel, timeLabel}], observacao}] }
+let sessions = [];           // [{ id, nota, points:[{ponto, photos:[...], observacao}] }]
+let activeSessionId = null;  // sessão sendo editada agora na câmera/formulário
 let currentPhotos = [];      // fotos do ponto que está sendo montado agora
 let currentAngle = null;     // última leitura do sensor
 let sensorReady = false;
@@ -53,29 +56,50 @@ function toast(msg, ms=2500){
   toast._timer = setTimeout(()=>{ t.style.display='none'; }, ms);
 }
 
-function saveSession(){
+function genId(){
+  return 'sess_' + Date.now() + '_' + Math.round(Math.random()*1e6);
+}
+
+function saveSessions(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
   }catch(e){
     toast('Aviso: memória do celular cheia. Gere o relatório logo para não perder as fotos.');
   }
 }
 
-function loadSession(){
+function loadSessions(){
   const raw = localStorage.getItem(STORAGE_KEY);
-  if(!raw) return null;
-  try{ return JSON.parse(raw); }catch(e){ return null; }
+  if(raw){
+    try{
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed)) return parsed;
+    }catch(e){ /* ignora e segue pra checar formato antigo */ }
+  }
+  /* migração do formato antigo (uma sessão só), se existir */
+  const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
+  if(oldRaw){
+    try{
+      const old = JSON.parse(oldRaw);
+      if(old && old.points){
+        const migrated = [{ id: genId(), nota: old.nota, points: old.points }];
+        localStorage.removeItem(OLD_STORAGE_KEY);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+    }catch(e){ /* ignora */ }
+  }
+  return [];
 }
 
-function clearSession(){
-  localStorage.removeItem(STORAGE_KEY);
-  session = null;
-  currentPhotos = [];
+function getActiveSession(){
+  return sessions.find(s => s.id === activeSessionId) || null;
 }
 
 function nextPontoSuggestion(){
-  if(!session.points.length) return '01';
-  const last = session.points[session.points.length - 1].ponto;
+  const s = getActiveSession();
+  if(!s || !s.points.length) return '01';
+  const last = s.points[s.points.length - 1].ponto;
   const num = parseInt(last, 10);
   if(isNaN(num)) return '';
   const next = num + 1;
@@ -83,7 +107,6 @@ function nextPontoSuggestion(){
 }
 
 function formatTimestamp(d){
-  const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
   const pad = n => String(n).padStart(2,'0');
   const hora = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   const data = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
@@ -92,40 +115,62 @@ function formatTimestamp(d){
 
 /* ===================== Tela inicial ===================== */
 function initStartScreen(){
-  session = loadSession();
+  sessions = loadSessions();
+  activeSessionId = null;
+  renderStartScreen();
+}
+
+function renderStartScreen(){
   const noSession = $('no-session-block');
-  const resumeBlock = $('resume-block');
-  if(session && session.points){
-    noSession.style.display = 'none';
-    resumeBlock.style.display = 'block';
-    $('resume-nota').textContent = 'Nota ' + session.nota;
-    $('resume-count').textContent = session.points.length + (session.points.length===1 ? ' ponto registrado' : ' pontos registrados');
-  } else {
-    noSession.style.display = 'block';
-    resumeBlock.style.display = 'none';
-  }
+  const limitBlock = $('limit-block');
+  const atLimit = sessions.length >= MAX_SESSIONS;
+
+  noSession.style.display = atLimit ? 'none' : 'block';
+  limitBlock.style.display = atLimit ? 'block' : 'none';
+
+  const list = $('sessions-list');
+  list.innerHTML = '';
+  const template = $('session-card-template');
+
+  sessions.forEach(s=>{
+    const node = template.content.cloneNode(true);
+    node.querySelector('.nota').textContent = 'Nota ' + s.nota;
+    node.querySelector('.count').textContent = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados');
+    node.querySelector('.btn-continuar').addEventListener('click', ()=>{
+      activeSessionId = s.id;
+      startGeoWatch();
+      goToCameraForNewPoint();
+    });
+    node.querySelector('.btn-gerar-pdf').addEventListener('click', ()=>{
+      if(!s.points.length){ toast('Essa sessão ainda não tem nenhum ponto registrado.'); return; }
+      activeSessionId = s.id;
+      openReview();
+    });
+    node.querySelector('.btn-descartar').addEventListener('click', ()=>{
+      if(confirm('Descartar a sessão da nota ' + s.nota + '? As fotos ainda não geradas em PDF serão perdidas.')){
+        sessions = sessions.filter(x => x.id !== s.id);
+        saveSessions();
+        renderStartScreen();
+      }
+    });
+    list.appendChild(node);
+  });
 }
 
 $('btn-start-session').addEventListener('click', ()=>{
+  if(sessions.length >= MAX_SESSIONS){
+    toast('Limite de 3 sessões atingido. Descarte ou gere o PDF de alguma antes de continuar.');
+    return;
+  }
   const val = $('input-nota').value.trim();
   if(!val){ toast('Digite o número da nota para continuar.'); return; }
-  session = { nota: val, points: [] };
-  saveSession();
+  const novaSessao = { id: genId(), nota: val, points: [] };
+  sessions.push(novaSessao);
+  activeSessionId = novaSessao.id;
+  saveSessions();
+  $('input-nota').value = '';
   startGeoWatch();
   goToCameraForNewPoint();
-});
-
-$('btn-resume').addEventListener('click', ()=>{
-  session = loadSession();
-  startGeoWatch();
-  goToCameraForNewPoint();
-});
-
-$('btn-discard').addEventListener('click', ()=>{
-  if(confirm('Descartar a sessão em andamento? As fotos ainda não geradas em PDF serão perdidas.')){
-    clearSession();
-    initStartScreen();
-  }
 });
 
 /* ===================== Câmera ===================== */
@@ -149,7 +194,9 @@ function stopCamera(){
 }
 
 function goToCameraForNewPoint(){
-  $('cam-nota-label').textContent = 'Nota ' + session.nota;
+  const s = getActiveSession();
+  if(!s){ showScreen('screen-start'); renderStartScreen(); return; }
+  $('cam-nota-label').textContent = 'Nota ' + s.nota;
   $('cam-point-label').textContent = 'Sugestão: ponto ' + nextPontoSuggestion();
   showScreen('screen-camera');
   startCamera();
@@ -220,7 +267,8 @@ $('btn-retake').addEventListener('click', ()=>{
 $('btn-accept-photo').addEventListener('click', ()=>{
   currentPhotos.push(window._pendingPhoto);
   window._pendingPhoto = null;
-  $('more-nota-label').textContent = 'Nota ' + session.nota;
+  const s = getActiveSession();
+  $('more-nota-label').textContent = 'Nota ' + (s ? s.nota : '—');
   $('more-point-label').textContent = 'Sugestão: ponto ' + nextPontoSuggestion();
   showScreen('screen-more');
 });
@@ -232,21 +280,46 @@ $('btn-more-yes').addEventListener('click', ()=>{
 });
 
 $('btn-more-no').addEventListener('click', ()=>{
-  $('pf-nota-label').textContent = 'Nota ' + session.nota;
+  goToPointForm();
+});
+
+function goToPointForm(){
+  const s = getActiveSession();
+  $('pf-nota-label').textContent = 'Nota ' + (s ? s.nota : '—');
   $('input-ponto').value = nextPontoSuggestion();
   $('input-observacao').value = '';
   showScreen('screen-point-form');
+}
+
+/* ===================== Finalizar sessão direto da câmera ===================== */
+$('btn-finish-session-cam').addEventListener('click', ()=>{
+  if(currentPhotos.length){
+    /* tem foto(s) tirada(s) mas ainda não salvas nesse ponto — manda
+       primeiro pro formulário de ponto, pra não perder a foto */
+    toast('Confirme os dados desse ponto antes de encerrar a sessão.');
+    goToPointForm();
+    return;
+  }
+  const s = getActiveSession();
+  if(!s || !s.points.length){
+    toast('Registre ao menos um ponto antes de finalizar a sessão.');
+    return;
+  }
+  stopCamera();
+  openReview();
 });
 
 /* ===================== Formulário do ponto ===================== */
 function commitCurrentPoint(){
+  const s = getActiveSession();
+  if(!s) return false;
   const ponto = $('input-ponto').value.trim();
   if(!ponto){ toast('Informe o número do ponto.'); return false; }
   if(!currentPhotos.length){ toast('Nenhuma foto registrada para este ponto.'); return false; }
   const observacao = $('input-observacao').value.trim();
-  session.points.push({ ponto, photos: currentPhotos.slice(), observacao });
+  s.points.push({ ponto, photos: currentPhotos.slice(), observacao });
   currentPhotos = [];
-  saveSession();
+  saveSessions();
   return true;
 }
 
@@ -260,7 +333,8 @@ $('btn-finish-nota').addEventListener('click', ()=>{
   if(currentPhotos.length){
     if(!commitCurrentPoint()) return;
   }
-  if(!session.points.length){
+  const s = getActiveSession();
+  if(!s || !s.points.length){
     toast('Registre ao menos um ponto antes de finalizar.');
     return;
   }
@@ -269,10 +343,12 @@ $('btn-finish-nota').addEventListener('click', ()=>{
 
 /* ===================== Revisão ===================== */
 function openReview(){
-  $('review-nota-label').textContent = 'Nota ' + session.nota;
+  const s = getActiveSession();
+  if(!s){ showScreen('screen-start'); renderStartScreen(); return; }
+  $('review-nota-label').textContent = 'Nota ' + s.nota;
   const list = $('review-list');
   list.innerHTML = '';
-  session.points.forEach((p, idx)=>{
+  s.points.forEach((p, idx)=>{
     const anyOut = p.photos.some(ph => ph.outOfLevel);
     const div = document.createElement('div');
     div.className = 'point-item';
@@ -289,9 +365,9 @@ function openReview(){
   list.querySelectorAll('.del-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const idx = parseInt(btn.dataset.idx, 10);
-      if(confirm('Excluir o ponto ' + session.points[idx].ponto + '?')){
-        session.points.splice(idx, 1);
-        saveSession();
+      if(confirm('Excluir o ponto ' + s.points[idx].ponto + '?')){
+        s.points.splice(idx, 1);
+        saveSessions();
         openReview();
       }
     });
@@ -377,19 +453,18 @@ async function loadLogoAsDataUrl(){
   });
 }
 
-async function generatePdf(){
+async function generatePdf(sessionObj){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const verdeEscuro = [11,61,35];
-  const verde = [35,121,79];
   const vermelhoClaro = [247,193,193];
   const vermelhoTexto = [121,31,31];
 
   const logo = await loadLogoAsDataUrl();
 
-  session.points.forEach((p, idx)=>{
+  sessionObj.points.forEach((p, idx)=>{
     if(idx>0) doc.addPage();
 
     /* cabeçalho */
@@ -411,7 +486,7 @@ async function generatePdf(){
     doc.setTextColor(11,61,35);
     doc.setFont('helvetica','bold');
     doc.setFontSize(11);
-    doc.text('Nota ' + session.nota, 28, y);
+    doc.text('Nota ' + sessionObj.nota, 28, y);
     doc.text('Ponto ' + p.ponto, 170, y);
     doc.setFont('helvetica','normal');
     doc.setFontSize(9);
@@ -442,11 +517,12 @@ async function generatePdf(){
     const photoTop = y + 42;
     const availW = pageW - 56;
     const maxPhotoH = 360;
+    let afterPhotosY;
     if(p.photos.length === 1){
       const img = p.photos[0];
       const dims = fitImage(availW, maxPhotoH, img.dataUrl);
       addPhotoWithFrame(doc, img, 28, photoTop, dims.w, dims.h);
-      var afterPhotosY = photoTop + dims.h + 20;
+      afterPhotosY = photoTop + dims.h + 20;
     } else {
       const gap = 12;
       const colW = (availW - gap) / 2;
@@ -477,7 +553,7 @@ async function generatePdf(){
     doc.setTextColor(255,255,255);
     doc.text('B. Tobace Instalações Elétricas e Telefônicas Ltda', 28, pageH-10);
     doc.setTextColor(159,225,203);
-    doc.text('Página ' + (idx+1) + ' de ' + session.points.length, pageW-28, pageH-10, {align:'right'});
+    doc.text('Página ' + (idx+1) + ' de ' + sessionObj.points.length, pageW-28, pageH-10, {align:'right'});
   });
 
   return doc;
@@ -498,12 +574,15 @@ function addPhotoWithFrame(doc, img, x, y, w, h){
 }
 
 $('btn-generate-pdf').addEventListener('click', async ()=>{
+  const s = getActiveSession();
+  if(!s) return;
   $('btn-generate-pdf').textContent = 'Gerando…';
   $('btn-generate-pdf').disabled = true;
   try{
-    const doc = await generatePdf();
+    const doc = await generatePdf(s);
     window._lastPdf = doc;
-    window._lastPdfName = `relatorio_nota_${session.nota}.pdf`;
+    window._lastPdfName = `relatorio_nota_${s.nota}.pdf`;
+    window._lastPdfSessionId = s.id;
     showScreen('screen-done');
   }catch(e){
     toast('Erro ao gerar o PDF. Tente novamente.');
@@ -517,11 +596,11 @@ $('btn-download-pdf').addEventListener('click', ()=>{
   if(window._lastPdf) window._lastPdf.save(window._lastPdfName);
 });
 
-function buildShareText(){
-  const total = session.points.length;
-  const foraDoPrumo = session.points.filter(p => p.photos.some(ph => ph.outOfLevel)).length;
+function buildShareText(sessionObj){
+  const total = sessionObj.points.length;
+  const foraDoPrumo = sessionObj.points.filter(p => p.photos.some(ph => ph.outOfLevel)).length;
   const hoje = formatTimestamp(new Date()).data;
-  let txt = `Relatório fotográfico — Nota ${session.nota}\n`;
+  let txt = `Relatório fotográfico — Nota ${sessionObj.nota}\n`;
   txt += `${total} ponto${total===1?'':'s'} registrado${total===1?'':'s'} · ${hoje}`;
   if(foraDoPrumo > 0){
     txt += `\n⚠ ${foraDoPrumo} ponto${foraDoPrumo===1?'':'s'} fora do prumo`;
@@ -531,12 +610,13 @@ function buildShareText(){
 
 $('btn-share-pdf').addEventListener('click', async ()=>{
   if(!window._lastPdf) return;
+  const s = sessions.find(x => x.id === window._lastPdfSessionId);
   const blob = window._lastPdf.output('blob');
   const file = new File([blob], window._lastPdfName, {type:'application/pdf'});
-  const shareText = buildShareText();
+  const shareText = s ? buildShareText(s) : ('Relatório — ' + window._lastPdfName);
   if(navigator.canShare && navigator.canShare({files:[file]})){
     try{
-      await navigator.share({ files:[file], title:'Relatório fotográfico — Nota ' + session.nota, text: shareText });
+      await navigator.share({ files:[file], title:'Relatório fotográfico', text: shareText });
       return;
     }catch(e){ /* usuário cancelou ou falhou, cai no download */ }
   }
@@ -545,9 +625,14 @@ $('btn-share-pdf').addEventListener('click', async ()=>{
 });
 
 $('btn-new-session').addEventListener('click', ()=>{
-  clearSession();
+  /* encerra e remove a sessão cujo PDF acabou de ser gerado, liberando a vaga */
+  if(window._lastPdfSessionId){
+    sessions = sessions.filter(x => x.id !== window._lastPdfSessionId);
+    saveSessions();
+  }
+  activeSessionId = null;
   showScreen('screen-start');
-  initStartScreen();
+  renderStartScreen();
 });
 
 /* ===================== Diagnóstico de erros ===================== */
