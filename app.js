@@ -228,7 +228,15 @@ function renderStartScreen(){
   sessions.forEach(s=>{
     const node = template.content.cloneNode(true);
     node.querySelector('.nota').textContent = 'Nota ' + s.nota + (s.pdfGerado ? ' ✓' : '');
-    node.querySelector('.count').textContent = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados') + (s.pdfGerado ? ' · PDF já gerado' : '');
+    const countEl = node.querySelector('.count');
+    if(s.compartilhadoEm){
+      const ts = formatTimestamp(new Date(s.compartilhadoEm));
+      countEl.textContent = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados') + ' · compartilhado em ' + ts.label;
+    } else if(s.pdfGerado){
+      countEl.innerHTML = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados') + ' · <span style="color:#B8860B; font-weight:bold;">PDF gerado, ainda não compartilhado</span>';
+    } else {
+      countEl.textContent = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados');
+    }
     node.querySelector('.btn-gerar-pdf').textContent = s.pdfGerado ? 'Gerar PDF de novo' : 'Gerar PDF';
     node.querySelector('.btn-continuar').addEventListener('click', ()=>{
       activeSessionId = s.id;
@@ -836,6 +844,10 @@ $('btn-share-pdf').addEventListener('click', async ()=>{
   if(navigator.canShare && navigator.canShare({files:[file]})){
     try{
       await navigator.share({ files:[file], title:'Relatório fotográfico', text: shareText });
+      if(s){
+        s.compartilhadoEm = Date.now();
+        await saveSessions();
+      }
       return;
     }catch(e){ /* usuário cancelou ou falhou, cai no download */ }
   }
