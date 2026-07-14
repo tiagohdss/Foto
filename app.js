@@ -303,20 +303,22 @@ function attachOrientationListener(){
 }
 
 function onOrientation(e){
-  if(e.beta === null || e.beta === undefined) return;
-  const angle = Math.abs(e.beta);
+  /* gamma = inclinação esquerda/direita (rolagem), é o que faz o poste
+     parecer torto na foto. beta (frente/trás) só muda a mira da câmera
+     pra cima/baixo e não afeta o prumo aparente, por isso não é usado. */
+  if(e.gamma === null || e.gamma === undefined) return;
+  const angle = 90 + e.gamma;
   currentAngle = angle;
-  updateLevelUI(angle);
+  updateLevelUI(angle, e.gamma);
 }
 
-function updateLevelUI(angle){
+function updateLevelUI(angle, gamma){
   const badge = $('angle-badge');
   const redLine = $('level-line-v');
   const ok = angle >= TOL_MIN && angle <= TOL_MAX;
   badge.textContent = Math.round(angle) + '° ' + (ok ? '· no prumo' : '· fora do prumo');
   badge.classList.toggle('ok', ok);
-  const delta = 90 - angle;
-  redLine.style.transform = `rotate(${delta}deg)`;
+  redLine.style.transform = `rotate(${-gamma}deg)`;
 }
 
 /* fallback: se depois de 1.5s não veio leitura nenhuma, avisa que o sensor não respondeu */
