@@ -11,6 +11,7 @@ const LOGO_MARK_URL = 'assets/logo-mark-color.png';
 let sessions = [];           // [{ id, nota, points:[{ponto, photos:[...], observacao}] }]
 let activeSessionId = null;  // sessão sendo editada agora na câmera/formulário
 let currentPhotos = [];      // fotos do ponto que está sendo montado agora
+let editingPointIndex = null; // índice do ponto sendo editado na revisão (null = criando novo)
 let currentAngle = null;     // última leitura do sensor
 let sensorReady = false;
 let stream = null;
@@ -450,12 +451,39 @@ $('btn-more-no').addEventListener('click', ()=>{
 });
 
 function goToPointForm(){
+  exitEditMode();
   const s = getActiveSession();
   $('pf-nota-label').textContent = 'Nota ' + (s ? s.nota : '—');
   $('input-ponto').value = nextPontoSuggestion();
   $('input-observacao').value = '';
   showScreen('screen-point-form');
 }
+
+function openEditPoint(idx){
+  const s = getActiveSession();
+  if(!s || !s.points[idx]) return;
+  editingPointIndex = idx;
+  const p = s.points[idx];
+  $('pf-nota-label').textContent = 'Nota ' + s.nota + ' — editando ponto';
+  $('input-ponto').value = p.ponto;
+  $('input-observacao').value = p.observacao || '';
+  $('btn-save-point').textContent = 'Salvar alterações';
+  $('btn-finish-nota').style.display = 'none';
+  $('btn-cancel-edit').style.display = 'block';
+  showScreen('screen-point-form');
+}
+
+function exitEditMode(){
+  editingPointIndex = null;
+  $('btn-save-point').textContent = 'Salvar e ir para o próximo poste';
+  $('btn-finish-nota').style.display = 'block';
+  $('btn-cancel-edit').style.display = 'none';
+}
+
+$('btn-cancel-edit').addEventListener('click', ()=>{
+  exitEditMode();
+  openReview();
+});
 
 /* ===================== Finalizar sessão direto da câmera ===================== */
 $('btn-finish-session-cam').addEventListener('click', ()=>{
@@ -490,6 +518,19 @@ async function commitCurrentPoint(){
 }
 
 $('btn-save-point').addEventListener('click', async ()=>{
+  if(editingPointIndex !== null){
+    const s = getActiveSession();
+    if(!s) return;
+    const ponto = $('input-ponto').value.trim();
+    if(!ponto){ toast('Informe o número do ponto.'); return; }
+    s.points[editingPointIndex].ponto = ponto;
+    s.points[editingPointIndex].observacao = $('input-observacao').value.trim();
+    await saveSessions();
+    toast('Ponto atualizado.');
+    exitEditMode();
+    openReview();
+    return;
+  }
   if(await commitCurrentPoint()){
     const s = getActiveSession();
     toast('Ponto salvo (' + (s ? s.points.length : '?') + ' pontos nessa nota agora)', 3000);
@@ -526,9 +567,17 @@ function openReview(){
         <div class="p-num">Ponto ${p.ponto} ${anyOut ? '<span style="color:#E24B4A;">· fora do prumo</span>' : ''}</div>
         <div class="p-meta">${p.photos.length} foto${p.photos.length>1?'s':''} · ${p.photos[0].timeLabel}</div>
       </div>
-      <button class="del-btn" data-idx="${idx}">Excluir</button>
+      <div class="actions">
+        <button class="edit-btn" data-idx="${idx}">Editar</button>
+        <button class="del-btn" data-idx="${idx}">Excluir</button>
+      </div>
     `;
     list.appendChild(div);
+  });
+  list.querySelectorAll('.edit-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      openEditPoint(parseInt(btn.dataset.idx, 10));
+    });
   });
   list.querySelectorAll('.del-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
