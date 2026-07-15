@@ -36,7 +36,20 @@ const VIAB_CHECKLIST = [
 ];
 
 /* ===================== Estado ===================== */
-let selectedSetor = 'medicao'; // setor escolhido na tela inicial pra criar uma nota nova
+let selectedSetor = 'medicao'; // setor escolhido/filtrado na tela inicial
+
+function setorLabel(setor){
+  return setor === 'viabilidade' ? 'Viabilidade' : 'CCM/B2';
+}
+
+function applySetorFlag(elId, setor){
+  const el = $(elId);
+  if(!el) return;
+  el.textContent = setorLabel(setor);
+  el.classList.toggle('setor-viab', setor === 'viabilidade');
+  el.classList.toggle('setor-ccm', setor !== 'viabilidade');
+}
+
 let sessions = [];           // [{ id, nota, setor, points:[{ponto, photos:[...], observacao}], viabForm, formPreenchido }]
 let activeSessionId = null;  // sessão sendo editada agora na câmera/formulário
 let currentPhotos = [];      // fotos do ponto que está sendo montado agora
@@ -247,9 +260,10 @@ function renderStartScreen(){
   const searchBlock = $('search-block');
   searchBlock.style.display = sessions.length > SEARCH_THRESHOLD ? 'block' : 'none';
 
+  const porSetor = sessions.filter(s => (s.setor || 'medicao') === selectedSetor);
   const visibleSessions = searchTerm
-    ? sessions.filter(s => s.nota.toLowerCase().includes(searchTerm))
-    : sessions;
+    ? porSetor.filter(s => s.nota.toLowerCase().includes(searchTerm))
+    : porSetor;
 
   const list = $('sessions-list');
   list.innerHTML = '';
@@ -258,7 +272,9 @@ function renderStartScreen(){
   visibleSessions.forEach(s=>{
     const node = template.content.cloneNode(true);
     node.querySelector('.nota').textContent = 'Nota ' + s.nota + (s.pdfGerado ? ' ✓' : '');
-    node.querySelector('.setor-tag').textContent = s.setor === 'viabilidade' ? 'Viabilidade' : 'Medição';
+    const setorTagEl = node.querySelector('.setor-tag');
+    setorTagEl.textContent = setorLabel(s.setor);
+    setorTagEl.style.color = (s.setor === 'viabilidade') ? '#B8860B' : 'var(--verde)';
     const countEl = node.querySelector('.count');
     if(s.compartilhadoEm){
       const ts = formatTimestamp(new Date(s.compartilhadoEm));
@@ -298,6 +314,7 @@ document.querySelectorAll('.setor-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     selectedSetor = btn.dataset.setor;
     document.querySelectorAll('.setor-btn').forEach(b => b.classList.toggle('active', b === btn));
+    renderStartScreen();
   });
 });
 
@@ -349,6 +366,7 @@ function stopCamera(){
 function goToCameraForNewPoint(){
   const s = getActiveSession();
   if(!s){ showScreen('screen-start'); renderStartScreen(); return; }
+  applySetorFlag('cam-setor-flag', s.setor);
   $('cam-nota-label').textContent = 'Nota ' + s.nota;
   $('cam-point-label').textContent = 'Sugestão: ponto ' + nextPontoSuggestion();
   showScreen('screen-camera');
@@ -533,6 +551,7 @@ $('btn-more-no').addEventListener('click', ()=>{
 function goToPointForm(){
   exitEditMode();
   const s = getActiveSession();
+  if(s) applySetorFlag('pf-setor-flag', s.setor);
   $('pf-nota-label').textContent = 'Nota ' + (s ? s.nota : '—');
   $('input-ponto').value = nextPontoSuggestion();
   $('input-observacao').value = '';
@@ -543,6 +562,7 @@ function openEditPoint(idx){
   const s = getActiveSession();
   if(!s || !s.points[idx]) return;
   editingPointIndex = idx;
+  applySetorFlag('pf-setor-flag', s.setor);
   const p = s.points[idx];
   $('pf-nota-label').textContent = 'Nota ' + s.nota + ' — editando ponto';
   $('input-ponto').value = p.ponto;
@@ -813,6 +833,7 @@ $('btn-viab-3-finish').addEventListener('click', async ()=>{
 function openReview(){
   const s = getActiveSession();
   if(!s){ showScreen('screen-start'); renderStartScreen(); return; }
+  applySetorFlag('review-setor-flag', s.setor);
   $('review-nota-label').textContent = 'Nota ' + s.nota;
   const list = $('review-list');
   list.innerHTML = '';

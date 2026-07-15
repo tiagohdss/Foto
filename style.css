@@ -181,3 +181,11 @@
   .backup-overlay .card{
     background:#fff; border-radius:14px; padding:28px 22px; max-width:360px; text-align:center;
   }
+
+  /* Selo de setor — bem visível em toda a jornada da nota (câmera, ponto, revisão) */
+  .setor-flag{
+    padding:7px 16px; font-size:12px; font-weight:bold; text-align:center;
+    color:#fff; letter-spacing:0.5px; text-transform:uppercase;
+  }
+  .setor-flag.setor-ccm{ background:var(--verde); }
+  .setor-flag.setor-viab{ background:#B8860B; }

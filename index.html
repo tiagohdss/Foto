@@ -33,7 +33,7 @@
         <div class="field">
           <label class="field-label">Setor</label>
           <div class="row2" id="setor-toggle">
-            <button type="button" class="btn-secondary setor-btn active" data-setor="medicao">Medição</button>
+            <button type="button" class="btn-secondary setor-btn active" data-setor="medicao">CCM/B2</button>
             <button type="button" class="btn-secondary setor-btn" data-setor="viabilidade">Viabilidade</button>
           </div>
         </div>
@@ -75,6 +75,7 @@
 
   <!-- SCREEN: CAMERA -->
   <div class="screen" id="screen-camera">
+    <div class="setor-flag" id="cam-setor-flag">CCM/B2</div>
     <div class="cam-wrap">
       <div class="point-flag">
         <span id="cam-nota-label">Nota —</span>
@@ -136,6 +137,7 @@
         <div class="sub">Confirme os dados do ponto</div>
       </div>
     </div>
+    <div class="setor-flag" id="pf-setor-flag">CCM/B2</div>
     <div class="body-pad">
       <div class="field">
         <label class="field-label">Número do ponto</label>
@@ -248,6 +250,7 @@
         <div class="sub" id="review-nota-label">Nota —</div>
       </div>
     </div>
+    <div class="setor-flag" id="review-setor-flag">CCM/B2</div>
     <div class="body-pad" id="review-list" style="flex:1; overflow-y:auto;">
     </div>
     <div class="footer-fixed">
