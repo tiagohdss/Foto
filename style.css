@@ -171,3 +171,13 @@
   .checklist-item .q-detail textarea{ min-height:70px; }
   .checklist-item .q-contacts{ margin-top:10px; display:flex; flex-direction:column; gap:8px; }
   .checklist-item .q-contacts input{ font-size:14px; padding:10px; }
+
+  /* Overlay bloqueante do backup semanal */
+  .backup-overlay{
+    position:fixed; inset:0; background:rgba(11,61,35,0.94); z-index:2000;
+    display:none; align-items:center; justify-content:center; padding:24px;
+  }
+  .backup-overlay.active{ display:flex; }
+  .backup-overlay .card{
+    background:#fff; border-radius:14px; padding:28px 22px; max-width:360px; text-align:center;
+  }

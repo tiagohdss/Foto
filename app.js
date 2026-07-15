@@ -1244,6 +1244,81 @@ $('btn-new-session').addEventListener('click', ()=>{
   renderStartScreen();
 });
 
+/* ===================== Backup semanal (terça a terça) ===================== */
+const BACKUP_KEY = 'ultimoBackupConfirmadoEm';
+let ultimoBackupConfirmadoEm = null;
+
+function getMostRecentTuesdayStart(date){
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  const dia = d.getDay(); // 0=dom, 1=seg, 2=ter, ...
+  const diasDesdeTerca = (dia - 2 + 7) % 7;
+  d.setDate(d.getDate() - diasDesdeTerca);
+  return d.getTime();
+}
+
+function isBackupDue(){
+  const inicioSemanaAtual = getMostRecentTuesdayStart(new Date());
+  return !ultimoBackupConfirmadoEm || ultimoBackupConfirmadoEm < inicioSemanaAtual;
+}
+
+async function checkBackupReminder(){
+  try{
+    const salvo = await idbGet(BACKUP_KEY);
+    ultimoBackupConfirmadoEm = salvo || null;
+  }catch(e){
+    ultimoBackupConfirmadoEm = null;
+  }
+  if(isBackupDue()){
+    $('btn-gerar-backup').style.display = 'block';
+    $('btn-confirmar-backup').style.display = 'none';
+    $('backup-overlay').classList.add('active');
+  }
+}
+
+function buildBackupFileName(){
+  const d = formatTimestamp(new Date()).data.replace(/\//g, '-');
+  return `backup_tobace_${d}.json`;
+}
+
+$('btn-gerar-backup').addEventListener('click', async ()=>{
+  $('btn-gerar-backup').textContent = 'Gerando…';
+  $('btn-gerar-backup').disabled = true;
+  try{
+    const payload = { exportadoEm: new Date().toISOString(), sessions };
+    const dataStr = JSON.stringify(payload);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const fname = buildBackupFileName();
+    const file = new File([blob], fname, { type: 'application/json' });
+
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try{
+        await navigator.share({ files: [file], title: 'Backup semanal — B. Tobace', text: 'Backup dos dados do app (' + fname + ')' });
+      }catch(e){ /* cancelou o compartilhamento — segue pra confirmação manual mesmo assim */ }
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname; a.click();
+      URL.revokeObjectURL(url);
+      toast('Backup baixado — envie esse arquivo manualmente no grupo.', 5000);
+    }
+  }catch(e){
+    toast('Erro ao gerar o backup: ' + (e.message || 'falha desconhecida'), 6000);
+    console.error(e);
+  }
+  $('btn-gerar-backup').textContent = 'Gerar e compartilhar backup';
+  $('btn-gerar-backup').disabled = false;
+  $('btn-gerar-backup').style.display = 'none';
+  $('btn-confirmar-backup').style.display = 'block';
+});
+
+$('btn-confirmar-backup').addEventListener('click', async ()=>{
+  ultimoBackupConfirmadoEm = Date.now();
+  try{ await idbSet(BACKUP_KEY, ultimoBackupConfirmadoEm); }catch(e){ /* segue mesmo assim */ }
+  $('backup-overlay').classList.remove('active');
+  toast('Backup confirmado. Até a próxima terça!');
+});
+
 /* ===================== Diagnóstico de erros ===================== */
 window.addEventListener('error', (e)=>{
   toast('Erro no app: ' + (e.message || 'falha desconhecida') + ' — tire um print e envie.', 6000);
@@ -1251,6 +1326,7 @@ window.addEventListener('error', (e)=>{
 
 /* ===================== Início ===================== */
 initStartScreen();
+checkBackupReminder();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
