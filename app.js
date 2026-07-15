@@ -231,14 +231,34 @@ function getActiveSession(){
   return sessions.find(s => s.id === activeSessionId) || null;
 }
 
+function itemLabel(p){
+  if(p.tipo === 'vao') return 'V' + p.vaoDe + '-' + p.vaoAte;
+  return 'P' + p.ponto;
+}
+
+function pontosDaSessao(s){
+  return s.points.filter(p => (p.tipo || 'ponto') === 'ponto');
+}
+
 function nextPontoSuggestion(){
   const s = getActiveSession();
-  if(!s || !s.points.length) return '01';
-  const last = s.points[s.points.length - 1].ponto;
+  if(!s) return '01';
+  const pontos = pontosDaSessao(s);
+  if(!pontos.length) return '01';
+  const last = pontos[pontos.length - 1].ponto;
   const num = parseInt(last, 10);
   if(isNaN(num)) return '';
   const next = num + 1;
   return String(next).padStart(String(last).length, '0');
+}
+
+function nextVaoSuggestion(){
+  const s = getActiveSession();
+  const pontos = s ? pontosDaSessao(s) : [];
+  if(!pontos.length) return { de:'1', ate:'2' };
+  const nums = pontos.map(p => parseInt(p.ponto, 10)).filter(n => !isNaN(n));
+  const maior = nums.length ? Math.max(...nums) : 0;
+  return { de: String(maior), ate: String(maior + 1) };
 }
 
 function formatTimestamp(d){
@@ -363,21 +383,55 @@ function stopCamera(){
   }
 }
 
+let currentCaptureTipo = 'ponto'; // Ponto ou Vão — decidido antes de capturar, define se mostra o nível
+
+function applyGuideForTipo(tipo){
+  const ehVao = tipo === 'vao';
+  $('guide-box-ponto').style.display = ehVao ? 'none' : 'block';
+  $('guide-msg-ponto').style.display = ehVao ? 'none' : 'block';
+  $('guide-box-vao-esq').style.display = ehVao ? 'block' : 'none';
+  $('guide-box-vao-dir').style.display = ehVao ? 'block' : 'none';
+  $('guide-msg-vao').style.display = ehVao ? 'block' : 'none';
+}
+
 function goToCameraForNewPoint(){
   const s = getActiveSession();
   if(!s){ showScreen('screen-start'); renderStartScreen(); return; }
   applySetorFlag('cam-setor-flag', s.setor);
   $('cam-nota-label').textContent = 'Nota ' + s.nota;
-  $('cam-point-label').textContent = 'Sugestão: ponto ' + nextPontoSuggestion();
+  currentCaptureTipo = 'ponto';
+  document.querySelectorAll('.tipo-captura-btn').forEach(b => b.classList.toggle('active', b.dataset.valor === 'ponto'));
+  applyGuideForTipo('ponto');
+  updateCamSuggestionLabel();
   showScreen('screen-camera');
   startCamera();
   applySectorCameraUI(s.setor);
 }
 
+function updateCamSuggestionLabel(){
+  if(currentCaptureTipo === 'vao'){
+    const sug = nextVaoSuggestion();
+    $('cam-point-label').textContent = 'Sugestão: V' + sug.de + '-' + sug.ate;
+  } else {
+    $('cam-point-label').textContent = 'Sugestão: P' + nextPontoSuggestion();
+  }
+}
+
+document.querySelectorAll('.tipo-captura-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    currentCaptureTipo = btn.dataset.valor;
+    document.querySelectorAll('.tipo-captura-btn').forEach(b => b.classList.toggle('active', b === btn));
+    applyGuideForTipo(currentCaptureTipo);
+    updateCamSuggestionLabel();
+    const s = getActiveSession();
+    if(s) applySectorCameraUI(s.setor);
+  });
+});
+
 /* Medição usa o nível 90° (linhas + selo de ângulo); Viabilidade não —
    só grava hora e localização, sem checagem de prumo */
 function applySectorCameraUI(setor){
-  const mostraNivel = nivelHabilitado(setor);
+  const mostraNivel = currentCaptureTipo === 'ponto' && nivelHabilitado(setor);
   $('level-line-v-fixed').style.display = mostraNivel ? 'block' : 'none';
   $('level-line-v').style.display = mostraNivel ? 'block' : 'none';
   $('angle-badge').style.display = mostraNivel ? 'block' : 'none';
@@ -424,7 +478,7 @@ function capturePhoto(){
   ctx.drawImage(video, 0, 0, w, h);
 
   const s = getActiveSession();
-  const mostraNivel = nivelHabilitado(s ? s.setor : 'medicao');
+  const mostraNivel = currentCaptureTipo === 'ponto' && nivelHabilitado(s ? s.setor : 'medicao');
 
   const angle = mostraNivel ? currentAngle : null;
   const outOfLevel = angle !== null && (angle < TOL_MIN || angle > TOL_MAX);
@@ -534,7 +588,12 @@ $('btn-accept-photo').addEventListener('click', ()=>{
   window._pendingPhoto = null;
   const s = getActiveSession();
   $('more-nota-label').textContent = 'Nota ' + (s ? s.nota : '—');
-  $('more-point-label').textContent = 'Sugestão: ponto ' + nextPontoSuggestion();
+  if(currentCaptureTipo === 'vao'){
+    const sug = nextVaoSuggestion();
+    $('more-point-label').textContent = 'Sugestão: V' + sug.de + '-' + sug.ate;
+  } else {
+    $('more-point-label').textContent = 'Sugestão: P' + nextPontoSuggestion();
+  }
   showScreen('screen-more');
 });
 
@@ -548,12 +607,34 @@ $('btn-more-no').addEventListener('click', ()=>{
   goToPointForm();
 });
 
+function setPfTipoUI(tipo){
+  document.querySelectorAll('.pf-tipo-btn').forEach(b => b.classList.toggle('active', b.dataset.valor === tipo));
+  $('campo-ponto').style.display = (tipo === 'ponto') ? 'block' : 'none';
+  $('campo-vao').style.display = (tipo === 'vao') ? 'block' : 'none';
+}
+
+document.querySelectorAll('.pf-tipo-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> setPfTipoUI(btn.dataset.valor));
+});
+
 function goToPointForm(){
   exitEditMode();
   const s = getActiveSession();
   if(s) applySetorFlag('pf-setor-flag', s.setor);
   $('pf-nota-label').textContent = 'Nota ' + (s ? s.nota : '—');
-  $('input-ponto').value = nextPontoSuggestion();
+  setPfTipoUI(currentCaptureTipo);
+  if(currentCaptureTipo === 'vao'){
+    const sug = nextVaoSuggestion();
+    $('input-vao-de').value = sug.de;
+    $('input-vao-ate').value = sug.ate;
+    $('input-vao-celosas').value = '';
+    $('input-ponto').value = '';
+  } else {
+    $('input-ponto').value = nextPontoSuggestion();
+    $('input-vao-de').value = '';
+    $('input-vao-ate').value = '';
+    $('input-vao-celosas').value = '';
+  }
   $('input-observacao').value = '';
   showScreen('screen-point-form');
 }
@@ -564,8 +645,13 @@ function openEditPoint(idx){
   editingPointIndex = idx;
   applySetorFlag('pf-setor-flag', s.setor);
   const p = s.points[idx];
-  $('pf-nota-label').textContent = 'Nota ' + s.nota + ' — editando ponto';
-  $('input-ponto').value = p.ponto;
+  const tipo = p.tipo || 'ponto';
+  setPfTipoUI(tipo);
+  $('pf-nota-label').textContent = 'Nota ' + s.nota + ' — editando ' + itemLabel(p);
+  $('input-ponto').value = p.ponto || '';
+  $('input-vao-de').value = p.vaoDe || '';
+  $('input-vao-ate').value = p.vaoAte || '';
+  $('input-vao-celosas').value = p.celosas || '';
   $('input-observacao').value = p.observacao || '';
   $('btn-save-point').textContent = 'Salvar alterações';
   $('btn-finish-nota').style.display = 'none';
@@ -604,14 +690,30 @@ $('btn-finish-session-cam').addEventListener('click', ()=>{
 });
 
 /* ===================== Formulário do ponto ===================== */
+function lerDadosDoFormulario(){
+  const tipoBtn = document.querySelector('.pf-tipo-btn.active');
+  const tipo = tipoBtn ? tipoBtn.dataset.valor : 'ponto';
+  if(tipo === 'vao'){
+    const de = $('input-vao-de').value.trim();
+    const ate = $('input-vao-ate').value.trim();
+    if(!de || !ate){ toast('Informe o vão (de/até).'); return null; }
+    const celosas = $('input-vao-celosas').value.trim();
+    if(!celosas){ toast('Informe a quantidade de celosas instaladas.'); return null; }
+    return { tipo:'vao', vaoDe: de, vaoAte: ate, celosas, ponto: undefined };
+  }
+  const ponto = $('input-ponto').value.trim();
+  if(!ponto){ toast('Informe o número do ponto.'); return null; }
+  return { tipo:'ponto', ponto, vaoDe: undefined, vaoAte: undefined, celosas: undefined };
+}
+
 async function commitCurrentPoint(){
   const s = getActiveSession();
   if(!s) return false;
-  const ponto = $('input-ponto').value.trim();
-  if(!ponto){ toast('Informe o número do ponto.'); return false; }
-  if(!currentPhotos.length){ toast('Nenhuma foto registrada para este ponto.'); return false; }
+  const dados = lerDadosDoFormulario();
+  if(!dados) return false;
+  if(!currentPhotos.length){ toast('Nenhuma foto registrada.'); return false; }
   const observacao = $('input-observacao').value.trim();
-  s.points.push({ ponto, photos: currentPhotos.slice(), observacao });
+  s.points.push({ ...dados, photos: currentPhotos.slice(), observacao });
   currentPhotos = [];
   await saveSessions();
   return true;
@@ -621,19 +723,18 @@ $('btn-save-point').addEventListener('click', async ()=>{
   if(editingPointIndex !== null){
     const s = getActiveSession();
     if(!s) return;
-    const ponto = $('input-ponto').value.trim();
-    if(!ponto){ toast('Informe o número do ponto.'); return; }
-    s.points[editingPointIndex].ponto = ponto;
-    s.points[editingPointIndex].observacao = $('input-observacao').value.trim();
+    const dados = lerDadosDoFormulario();
+    if(!dados) return;
+    s.points[editingPointIndex] = { ...s.points[editingPointIndex], ...dados, observacao: $('input-observacao').value.trim() };
     await saveSessions();
-    toast('Ponto atualizado.');
+    toast('Registro atualizado.');
     exitEditMode();
     openReview();
     return;
   }
   if(await commitCurrentPoint()){
     const s = getActiveSession();
-    toast('Ponto salvo (' + (s ? s.points.length : '?') + ' pontos nessa nota agora)', 3000);
+    toast((s ? itemLabel(s.points[s.points.length-1]) : 'Registro') + ' salvo (' + (s ? s.points.length : '?') + ' registros nessa nota agora)', 3000);
     goToCameraForNewPoint();
   }
 });
@@ -844,8 +945,8 @@ function openReview(){
     div.innerHTML = `
       <img src="${p.photos[0].dataUrl}" alt="">
       <div class="info">
-        <div class="p-num">Ponto ${p.ponto} ${anyOut ? '<span style="color:#E24B4A;">· fora do prumo</span>' : ''}</div>
-        <div class="p-meta">${p.photos.length} foto${p.photos.length>1?'s':''} · ${p.photos[0].timeLabel}</div>
+        <div class="p-num">${itemLabel(p)} ${anyOut ? '<span style="color:#E24B4A;">· fora do prumo</span>' : ''}</div>
+        <div class="p-meta">${p.photos.length} foto${p.photos.length>1?'s':''} · ${p.photos[0].timeLabel}${p.tipo==='vao' && p.celosas ? ' · ' + p.celosas + ' celosa' + (p.celosas==='1'?'':'s') : ''}</div>
       </div>
       <div class="actions">
         <button class="edit-btn" data-idx="${idx}">Editar</button>
@@ -862,7 +963,7 @@ function openReview(){
   list.querySelectorAll('.del-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const idx = parseInt(btn.dataset.idx, 10);
-      if(confirm('Excluir o ponto ' + s.points[idx].ponto + '?')){
+      if(confirm('Excluir ' + itemLabel(s.points[idx]) + '?')){
         s.points.splice(idx, 1);
         saveSessions();
         openReview();
@@ -1119,7 +1220,7 @@ async function generatePdf(sessionObj){
     doc.setFont('helvetica','bold');
     doc.setFontSize(11);
     doc.text('Nota ' + sessionObj.nota, 28, y);
-    doc.text('Ponto ' + p.ponto, 170, y);
+    doc.text(itemLabel(p), 170, y);
     doc.setFont('helvetica','normal');
     doc.setFontSize(9);
     doc.setTextColor(90,90,90);
@@ -1132,6 +1233,12 @@ async function generatePdf(sessionObj){
 
     const nomeEncarregado = (cadastroUsuario && cadastroUsuario.nome) ? cadastroUsuario.nome : '—';
     doc.text('Encarregado: ' + nomeEncarregado + ' (' + (cadastroUsuario ? cadastroUsuario.tipo : '—') + ')', 28, y + 22);
+
+    let linhaExtra = 0;
+    if(p.tipo === 'vao' && p.celosas){
+      doc.text('Celosas instaladas: ' + p.celosas, 28, y + 32);
+      linhaExtra = 10;
+    }
 
     const anyOut = p.photos.some(ph=>ph.outOfLevel);
     if(anyOut){
@@ -1146,10 +1253,10 @@ async function generatePdf(sessionObj){
     }
 
     doc.setDrawColor(210,210,205);
-    doc.line(28, y+32, pageW-28, y+32);
+    doc.line(28, y+32+linhaExtra, pageW-28, y+32+linhaExtra);
 
     /* fotos */
-    const photoTop = y + 52;
+    const photoTop = y + 52 + linhaExtra;
     const availW = pageW - 56;
     const maxPhotoH = 360;
     let afterPhotosY;

@@ -87,14 +87,21 @@
       </div>
       <video id="video" autoplay playsinline muted></video>
       <div class="cam-overlay">
-        <div class="guide-box"></div>
-        <div class="guide-msg">Encaixe o poste inteiro, da base ao topo</div>
+        <div class="guide-box" id="guide-box-ponto"></div>
+        <div class="guide-msg" id="guide-msg-ponto">Encaixe o poste inteiro, da base ao topo</div>
+        <div class="guide-box-vao guide-box-vao-esq" id="guide-box-vao-esq" style="display:none;"></div>
+        <div class="guide-box-vao guide-box-vao-dir" id="guide-box-vao-dir" style="display:none;"></div>
+        <div class="guide-msg" id="guide-msg-vao" style="display:none;">Encaixe os dois postes, um de cada lado, com o vão no meio</div>
         <div class="level-line-v-fixed" id="level-line-v-fixed"></div>
         <div class="level-line-v" id="level-line-v"></div>
         <div class="angle-badge" id="angle-badge">sensor indisponível</div>
       </div>
     </div>
     <div class="cam-controls">
+      <div class="row2" id="tipo-captura-toggle" style="margin-bottom:12px;">
+        <button type="button" class="btn-secondary tipo-captura-btn active" data-valor="ponto">Ponto</button>
+        <button type="button" class="btn-secondary tipo-captura-btn" data-valor="vao">Vão</button>
+      </div>
       <button class="shutter-btn" id="btn-capture">Capturar foto</button>
       <p class="sensor-note" id="sensor-note">Leitura do sensor do celular · tolerância 85°–95°</p>
       <button class="btn-ghost" id="btn-enable-sensor" style="margin-top:10px; display:none;">Ativar sensor de nível</button>
@@ -144,8 +151,24 @@
     <div class="setor-flag" id="pf-setor-flag">CCM/B2</div>
     <div class="body-pad">
       <div class="field">
+        <label class="field-label">Tipo</label>
+        <div class="row2" id="pf-tipo-toggle">
+          <button type="button" class="btn-secondary pf-tipo-btn" data-valor="ponto">Ponto</button>
+          <button type="button" class="btn-secondary pf-tipo-btn" data-valor="vao">Vão</button>
+        </div>
+      </div>
+      <div class="field" id="campo-ponto">
         <label class="field-label">Número do ponto</label>
         <input type="tel" inputmode="numeric" id="input-ponto">
+      </div>
+      <div class="field" id="campo-vao" style="display:none;">
+        <label class="field-label">Vão — do ponto / até o ponto</label>
+        <div class="row2">
+          <input type="tel" inputmode="numeric" id="input-vao-de" placeholder="De (ex: 1)">
+          <input type="tel" inputmode="numeric" id="input-vao-ate" placeholder="Até (ex: 2)">
+        </div>
+        <label class="field-label" style="margin-top:14px;">Quantidade de celosas instaladas</label>
+        <input type="tel" inputmode="numeric" id="input-vao-celosas" placeholder="Ex: 3">
       </div>
       <div class="field">
         <label class="field-label">Observação (opcional)</label>

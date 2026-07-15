@@ -92,6 +92,12 @@
     position:absolute; top:4%; bottom:4%; left:20%; right:20%;
     border:2.5px dashed var(--amarelo); border-radius:8px;
   }
+  .guide-box-vao{
+    position:absolute; top:8%; bottom:30%; width:16%;
+    border:2.5px dashed var(--amarelo); border-radius:8px;
+  }
+  .guide-box-vao-esq{ left:4%; }
+  .guide-box-vao-dir{ right:4%; }
   .guide-msg{
     position:absolute; top:36%; left:8%; right:8%; text-align:center;
     background:rgba(250,199,117,0.95); color:#412402; font-size:12px; font-weight:bold;
@@ -150,7 +156,7 @@
   }
 
   /* Seletor de setor e "melhor dia" — botão vira verde quando selecionado */
-  .setor-btn.active, .melhor-dia-btn.active, .cadastro-tipo-btn.active, .edit-tipo-btn.active, .solicitar-tipo-btn.active{
+  .setor-btn.active, .melhor-dia-btn.active, .cadastro-tipo-btn.active, .edit-tipo-btn.active, .solicitar-tipo-btn.active, .tipo-captura-btn.active, .pf-tipo-btn.active{
     background: var(--verde); color:#fff; border-color:var(--verde);
   }
 
