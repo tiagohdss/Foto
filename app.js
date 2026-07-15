@@ -977,6 +977,11 @@ function addViabilidadeFormPages(doc, sessionObj, logo, pageW, pageH){
     doc.setFontSize(10);
     doc.setTextColor(255,255,255);
     doc.text('Nota ' + sessionObj.nota, pageW-28, 27, {align:'right'});
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.setTextColor(159,225,203);
+    const nomeEnc = (cadastroUsuario && cadastroUsuario.nome) ? cadastroUsuario.nome : '—';
+    doc.text('Preenchido por: ' + nomeEnc, pageW-28, 40, {align:'right'});
     y = 80;
   }
 
@@ -1125,6 +1130,9 @@ async function generatePdf(sessionObj){
     const geoText = 'Local: ' + (p.photos[0].geoLabel || 'indisponível');
     doc.text(geoText, 28, y + 12);
 
+    const nomeEncarregado = (cadastroUsuario && cadastroUsuario.nome) ? cadastroUsuario.nome : '—';
+    doc.text('Encarregado: ' + nomeEncarregado + ' (' + (cadastroUsuario ? cadastroUsuario.tipo : '—') + ')', 28, y + 22);
+
     const anyOut = p.photos.some(ph=>ph.outOfLevel);
     if(anyOut){
       const badgeText = 'fora do prumo';
@@ -1138,10 +1146,10 @@ async function generatePdf(sessionObj){
     }
 
     doc.setDrawColor(210,210,205);
-    doc.line(28, y+22, pageW-28, y+22);
+    doc.line(28, y+32, pageW-28, y+32);
 
     /* fotos */
-    const photoTop = y + 42;
+    const photoTop = y + 52;
     const availW = pageW - 56;
     const maxPhotoH = 360;
     let afterPhotosY;
