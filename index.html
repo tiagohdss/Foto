@@ -306,7 +306,7 @@
   <div class="card">
     <h2 style="font-size:17px; color:var(--verde-escuro); margin:0 0 8px;">Digite o PIN</h2>
     <p style="font-size:14px; color:var(--cinza-texto); margin:0 0 16px;">Necessário pra alterar o cadastro diretamente.</p>
-    <input type="tel" inputmode="numeric" id="pin-input" placeholder="••••••" style="text-align:center; font-size:22px; letter-spacing:4px; width:100%; padding:12px; border:1px solid var(--cinza-borda); border-radius:8px;">
+    <input type="password" inputmode="numeric" pattern="[0-9]*" id="pin-input" placeholder="••••••" style="text-align:center; font-size:22px; letter-spacing:4px; width:100%; padding:12px; border:1px solid var(--cinza-borda); border-radius:8px;">
     <div class="row2" style="margin-top:14px;">
       <button class="btn-ghost" id="btn-pin-cancelar">Cancelar</button>
       <button class="btn-primary" id="btn-pin-confirmar">Confirmar</button>
