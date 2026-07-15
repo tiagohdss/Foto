@@ -25,6 +25,10 @@
         </div>
       </div>
     </div>
+    <div style="padding:10px 20px 0; display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--cinza-texto);">
+      <span id="cadastro-info" style="user-select:none;">Cadastrado como —</span>
+      <span id="link-solicitar-alteracao" style="color:var(--verde); font-weight:bold; cursor:pointer;">Solicitar alteração</span>
+    </div>
     <div class="body-pad">
       <div id="no-session-block">
         <h1>Nenhuma nota em andamento</h1>
@@ -277,6 +281,81 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="backup-overlay" id="cadastro-overlay">
+  <div class="card">
+    <img src="assets/logo-mark-color.png" alt="" style="width:48px; height:48px; border-radius:50%; margin-bottom:14px;">
+    <h2 style="font-size:17px; color:var(--verde-escuro); margin:0 0 8px;">Identificação</h2>
+    <p style="font-size:14px; color:var(--cinza-texto); margin:0 0 18px; line-height:1.5;">Preencha uma vez só — fica salvo neste celular.</p>
+    <div class="field" style="text-align:left;">
+      <label class="field-label">Seu nome</label>
+      <input type="text" id="cadastro-nome">
+    </div>
+    <div class="field" style="text-align:left;">
+      <label class="field-label">Tipo de equipe</label>
+      <div class="row2">
+        <button type="button" class="btn-secondary cadastro-tipo-btn" data-valor="GD">GD</button>
+        <button type="button" class="btn-secondary cadastro-tipo-btn" data-valor="Cesto">Cesto</button>
+      </div>
+    </div>
+    <button class="btn-primary" id="btn-salvar-cadastro" style="width:100%; margin-top:6px;">Salvar</button>
+  </div>
+</div>
+
+<div class="backup-overlay" id="pin-overlay">
+  <div class="card">
+    <h2 style="font-size:17px; color:var(--verde-escuro); margin:0 0 8px;">Digite o PIN</h2>
+    <p style="font-size:14px; color:var(--cinza-texto); margin:0 0 16px;">Necessário pra alterar o cadastro diretamente.</p>
+    <input type="tel" inputmode="numeric" id="pin-input" placeholder="••••••" style="text-align:center; font-size:22px; letter-spacing:4px; width:100%; padding:12px; border:1px solid var(--cinza-borda); border-radius:8px;">
+    <div class="row2" style="margin-top:14px;">
+      <button class="btn-ghost" id="btn-pin-cancelar">Cancelar</button>
+      <button class="btn-primary" id="btn-pin-confirmar">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div class="backup-overlay" id="edit-cadastro-overlay">
+  <div class="card">
+    <h2 style="font-size:17px; color:var(--verde-escuro); margin:0 0 8px;">Editar cadastro</h2>
+    <div class="field" style="text-align:left;">
+      <label class="field-label">Nome</label>
+      <input type="text" id="edit-cadastro-nome">
+    </div>
+    <div class="field" style="text-align:left;">
+      <label class="field-label">Tipo de equipe</label>
+      <div class="row2">
+        <button type="button" class="btn-secondary edit-tipo-btn" data-valor="GD">GD</button>
+        <button type="button" class="btn-secondary edit-tipo-btn" data-valor="Cesto">Cesto</button>
+      </div>
+    </div>
+    <div class="row2" style="margin-top:14px;">
+      <button class="btn-ghost" id="btn-edit-cadastro-cancelar">Cancelar</button>
+      <button class="btn-primary" id="btn-edit-cadastro-salvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="backup-overlay" id="solicitar-overlay">
+  <div class="card">
+    <h2 style="font-size:17px; color:var(--verde-escuro); margin:0 0 8px;">Solicitar alteração de cadastro</h2>
+    <p style="font-size:13px; color:var(--cinza-texto); margin:0 0 16px;">Isso não muda seu cadastro agora — envia um pedido pro responsável decidir.</p>
+    <div class="field" style="text-align:left;">
+      <label class="field-label">Tipo desejado</label>
+      <div class="row2">
+        <button type="button" class="btn-secondary solicitar-tipo-btn" data-valor="GD">GD</button>
+        <button type="button" class="btn-secondary solicitar-tipo-btn" data-valor="Cesto">Cesto</button>
+      </div>
+    </div>
+    <div class="field" style="text-align:left;">
+      <label class="field-label">Motivo (opcional)</label>
+      <textarea id="solicitar-motivo" style="min-height:70px;"></textarea>
+    </div>
+    <div class="row2" style="margin-top:6px;">
+      <button class="btn-ghost" id="btn-solicitar-cancelar">Cancelar</button>
+      <button class="btn-primary" id="btn-solicitar-enviar">Enviar pedido</button>
+    </div>
+  </div>
+</div>
 
 <div class="backup-overlay" id="backup-overlay">
   <div class="card">

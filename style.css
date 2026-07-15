@@ -150,7 +150,7 @@
   }
 
   /* Seletor de setor e "melhor dia" — botão vira verde quando selecionado */
-  .setor-btn.active, .melhor-dia-btn.active{
+  .setor-btn.active, .melhor-dia-btn.active, .cadastro-tipo-btn.active, .edit-tipo-btn.active, .solicitar-tipo-btn.active{
     background: var(--verde); color:#fff; border-color:var(--verde);
   }
 

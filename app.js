@@ -377,12 +377,12 @@ function goToCameraForNewPoint(){
 /* Medição usa o nível 90° (linhas + selo de ângulo); Viabilidade não —
    só grava hora e localização, sem checagem de prumo */
 function applySectorCameraUI(setor){
-  const isMedicao = setor !== 'viabilidade';
-  $('level-line-v-fixed').style.display = isMedicao ? 'block' : 'none';
-  $('level-line-v').style.display = isMedicao ? 'block' : 'none';
-  $('angle-badge').style.display = isMedicao ? 'block' : 'none';
-  $('sensor-note').style.display = isMedicao ? 'block' : 'none';
-  if(isMedicao){
+  const mostraNivel = nivelHabilitado(setor);
+  $('level-line-v-fixed').style.display = mostraNivel ? 'block' : 'none';
+  $('level-line-v').style.display = mostraNivel ? 'block' : 'none';
+  $('angle-badge').style.display = mostraNivel ? 'block' : 'none';
+  $('sensor-note').style.display = mostraNivel ? 'block' : 'none';
+  if(mostraNivel){
     setupOrientationButtonIfNeeded();
   } else {
     $('btn-enable-sensor').style.display = 'none';
@@ -424,9 +424,9 @@ function capturePhoto(){
   ctx.drawImage(video, 0, 0, w, h);
 
   const s = getActiveSession();
-  const isMedicao = !s || s.setor !== 'viabilidade';
+  const mostraNivel = nivelHabilitado(s ? s.setor : 'medicao');
 
-  const angle = isMedicao ? currentAngle : null;
+  const angle = mostraNivel ? currentAngle : null;
   const outOfLevel = angle !== null && (angle < TOL_MIN || angle > TOL_MAX);
   const ts = formatTimestamp(new Date());
 
@@ -439,7 +439,7 @@ function capturePhoto(){
   const centerX = w / 2;
   const centerY = h / 2;
 
-  if(isMedicao){
+  if(mostraNivel){
     ctx.save();
     ctx.strokeStyle = '#5DCAA5';
     ctx.lineWidth = Math.max(2, Math.round(w*0.0025));
@@ -1340,14 +1340,157 @@ $('btn-confirmar-backup').addEventListener('click', async ()=>{
   toast('Backup confirmado. Até a próxima terça!');
 });
 
-/* ===================== Diagnóstico de erros ===================== */
+/* ===================== Cadastro (nome + tipo de equipe) ===================== */
+const CADASTRO_KEY = 'cadastroUsuario';
+const ADMIN_PIN = '102030'; // conhecido só pelo responsável — libera edição direta do cadastro
+let cadastroUsuario = null; // { nome, tipo: 'GD'|'Cesto' }
+let tapCount = 0;
+let tapTimer = null;
+
+function nivelHabilitado(setor){
+  /* nível 90° só aparece pra equipe GD, no setor CCM/B2. Viabilidade
+     nunca usa nível, Cesto nunca usa nível, mesmo em CCM/B2. */
+  return setor !== 'viabilidade' && !!cadastroUsuario && cadastroUsuario.tipo === 'GD';
+}
+
+async function initCadastroGate(){
+  try{
+    cadastroUsuario = await idbGet(CADASTRO_KEY);
+  }catch(e){ cadastroUsuario = null; }
+  if(!cadastroUsuario){
+    $('cadastro-overlay').classList.add('active');
+  } else {
+    updateCadastroInfoLabel();
+    checkBackupReminder();
+  }
+}
+
+function updateCadastroInfoLabel(){
+  if(!cadastroUsuario) return;
+  $('cadastro-info').textContent = 'Cadastrado como ' + cadastroUsuario.nome + ' · ' + cadastroUsuario.tipo;
+}
+
+document.querySelectorAll('.cadastro-tipo-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.cadastro-tipo-btn').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
+$('btn-salvar-cadastro').addEventListener('click', async ()=>{
+  const nome = $('cadastro-nome').value.trim();
+  const tipoBtn = document.querySelector('.cadastro-tipo-btn.active');
+  if(!nome){ toast('Digite seu nome.'); return; }
+  if(!tipoBtn){ toast('Selecione o tipo de equipe.'); return; }
+  cadastroUsuario = { nome, tipo: tipoBtn.dataset.valor };
+  try{ await idbSet(CADASTRO_KEY, cadastroUsuario); }catch(e){ /* segue mesmo assim */ }
+  updateCadastroInfoLabel();
+  $('cadastro-overlay').classList.remove('active');
+  checkBackupReminder();
+});
+
+/* toque 5x seguidas em "Cadastrado como..." revela o PIN */
+$('cadastro-info').addEventListener('click', ()=>{
+  tapCount++;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(()=>{ tapCount = 0; }, 1800);
+  if(tapCount >= 5){
+    tapCount = 0;
+    $('pin-input').value = '';
+    $('pin-overlay').classList.add('active');
+  }
+});
+
+$('btn-pin-cancelar').addEventListener('click', ()=>{
+  $('pin-overlay').classList.remove('active');
+});
+
+$('btn-pin-confirmar').addEventListener('click', ()=>{
+  if($('pin-input').value === ADMIN_PIN){
+    $('pin-overlay').classList.remove('active');
+    $('edit-cadastro-nome').value = cadastroUsuario ? cadastroUsuario.nome : '';
+    document.querySelectorAll('.edit-tipo-btn').forEach(b=>{
+      b.classList.toggle('active', cadastroUsuario && b.dataset.valor === cadastroUsuario.tipo);
+    });
+    $('edit-cadastro-overlay').classList.add('active');
+  } else {
+    toast('PIN incorreto.');
+  }
+});
+
+document.querySelectorAll('.edit-tipo-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.edit-tipo-btn').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
+$('btn-edit-cadastro-cancelar').addEventListener('click', ()=>{
+  $('edit-cadastro-overlay').classList.remove('active');
+});
+
+$('btn-edit-cadastro-salvar').addEventListener('click', async ()=>{
+  const nome = $('edit-cadastro-nome').value.trim();
+  const tipoBtn = document.querySelector('.edit-tipo-btn.active');
+  if(!nome){ toast('Digite o nome.'); return; }
+  if(!tipoBtn){ toast('Selecione o tipo de equipe.'); return; }
+  cadastroUsuario = { nome, tipo: tipoBtn.dataset.valor };
+  try{ await idbSet(CADASTRO_KEY, cadastroUsuario); }catch(e){ /* segue mesmo assim */ }
+  updateCadastroInfoLabel();
+  $('edit-cadastro-overlay').classList.remove('active');
+  toast('Cadastro atualizado.');
+});
+
+/* ===================== Solicitar alteração de cadastro (sem editar nada) ===================== */
+$('link-solicitar-alteracao').addEventListener('click', ()=>{
+  document.querySelectorAll('.solicitar-tipo-btn').forEach(b => b.classList.remove('active'));
+  $('solicitar-motivo').value = '';
+  $('solicitar-overlay').classList.add('active');
+});
+
+document.querySelectorAll('.solicitar-tipo-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.solicitar-tipo-btn').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
+$('btn-solicitar-cancelar').addEventListener('click', ()=>{
+  $('solicitar-overlay').classList.remove('active');
+});
+
+$('btn-solicitar-enviar').addEventListener('click', async ()=>{
+  const tipoBtn = document.querySelector('.solicitar-tipo-btn.active');
+  if(!tipoBtn){ toast('Selecione o tipo desejado.'); return; }
+  const motivo = $('solicitar-motivo').value.trim();
+  const nomeAtual = cadastroUsuario ? cadastroUsuario.nome : '(não identificado)';
+  const tipoAtual = cadastroUsuario ? cadastroUsuario.tipo : '—';
+  let texto = `Solicitação de alteração de cadastro — B. Tobace\n`;
+  texto += `Nome: ${nomeAtual}\n`;
+  texto += `Tipo atual: ${tipoAtual}\n`;
+  texto += `Tipo desejado: ${tipoBtn.dataset.valor}\n`;
+  if(motivo) texto += `Motivo: ${motivo}\n`;
+
+  if(navigator.share){
+    try{
+      await navigator.share({ title:'Solicitação de alteração de cadastro', text: texto });
+    }catch(e){ /* cancelou */ }
+  } else if(navigator.clipboard){
+    try{
+      await navigator.clipboard.writeText(texto);
+      toast('Copiado — cole no grupo/WhatsApp manualmente.', 4000);
+    }catch(e){
+      toast('Não foi possível compartilhar automaticamente. Copie e envie manualmente: ' + texto, 8000);
+    }
+  }
+  $('solicitar-overlay').classList.remove('active');
+});
+
+
 window.addEventListener('error', (e)=>{
   toast('Erro no app: ' + (e.message || 'falha desconhecida') + ' — tire um print e envie.', 6000);
 });
 
 /* ===================== Início ===================== */
 initStartScreen();
-checkBackupReminder();
+initCadastroGate();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
