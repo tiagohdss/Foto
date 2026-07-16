@@ -3,7 +3,7 @@ const STORAGE_KEY = 'tobace_relatorio_sessoes';
 const OLD_STORAGE_KEY = 'tobace_relatorio_sessao'; // formato antigo (1 sessão só), migrado se existir
 const TOL_MIN = 85;
 const TOL_MAX = 95;
-const MAX_PHOTO_WIDTH = 1100;
+const MAX_PHOTO_WIDTH = 1400;
 const SEARCH_THRESHOLD = 5; // a partir de quantas notas o campo de busca aparece
 const LOGO_MARK_URL = 'assets/logo-mark-color.png';
 
@@ -364,22 +364,82 @@ $('btn-start-session').addEventListener('click', async ()=>{
 });
 
 /* ===================== Câmera ===================== */
+let videoTrack = null;
+
 async function startCamera(){
   try{
+    const paisagem = currentCaptureTipo === 'vao';
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: {ideal: 1280}, height: {ideal: 1707} },
+      video: {
+        facingMode: 'environment',
+        width: { ideal: paisagem ? 1707 : 1280 },
+        height: { ideal: paisagem ? 1280 : 1707 }
+      },
       audio: false
     });
     $('video').srcObject = stream;
+    videoTrack = stream.getVideoTracks()[0];
+    setupExposureControlIfSupported();
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão do navegador.');
   }
 }
 
+function setupExposureControlIfSupported(){
+  const control = $('exposure-control');
+  if(!videoTrack || typeof videoTrack.getCapabilities !== 'function'){
+    control.style.display = 'none';
+    return;
+  }
+  try{
+    const caps = videoTrack.getCapabilities();
+    if(caps.exposureCompensation && caps.exposureCompensation.max > caps.exposureCompensation.min){
+      const slider = $('exposure-slider');
+      slider.min = caps.exposureCompensation.min;
+      slider.max = caps.exposureCompensation.max;
+      slider.step = caps.exposureCompensation.step || 1;
+      slider.value = 0;
+      control.style.display = 'block';
+    } else {
+      control.style.display = 'none';
+    }
+  }catch(e){
+    control.style.display = 'none';
+  }
+}
+
+$('exposure-slider').addEventListener('input', ()=>{
+  if(!videoTrack) return;
+  const val = parseFloat($('exposure-slider').value);
+  videoTrack.applyConstraints({ advanced: [{ exposureCompensation: val }] }).catch(()=>{});
+});
+
+/* toque na tela pra focar/expor longe de uma luz forte, igual câmera nativa */
+$('video').addEventListener('click', (e)=>{
+  const rect = e.target.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  const ring = $('focus-ring');
+  ring.style.left = px + 'px';
+  ring.style.top = py + 'px';
+  ring.classList.add('show');
+  setTimeout(()=> ring.classList.remove('show'), 700);
+
+  if(!videoTrack || typeof videoTrack.getCapabilities !== 'function') return;
+  try{
+    const caps = videoTrack.getCapabilities();
+    if(!caps.pointsOfInterest) return;
+    const x = px / rect.width;
+    const y = py / rect.height;
+    videoTrack.applyConstraints({ advanced: [{ pointsOfInterest: [{ x, y }] }] }).catch(()=>{});
+  }catch(err){ /* aparelho não suporta — o toque só mostra o feedback visual */ }
+});
+
 function stopCamera(){
   if(stream){
     stream.getTracks().forEach(t => t.stop());
     stream = null;
+    videoTrack = null;
   }
 }
 
@@ -387,6 +447,7 @@ let currentCaptureTipo = 'ponto'; // Ponto ou Vão — decidido antes de captura
 
 function applyGuideForTipo(tipo){
   const ehVao = tipo === 'vao';
+  $('cam-wrap').classList.toggle('paisagem', ehVao);
   $('guide-box-ponto').style.display = ehVao ? 'none' : 'block';
   $('guide-msg-ponto').style.display = ehVao ? 'none' : 'block';
   $('guide-box-vao-esq').style.display = ehVao ? 'block' : 'none';
@@ -419,12 +480,15 @@ function updateCamSuggestionLabel(){
 
 document.querySelectorAll('.tipo-captura-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    if(currentCaptureTipo === btn.dataset.valor) return; // já está nesse tipo, não precisa reiniciar
     currentCaptureTipo = btn.dataset.valor;
     document.querySelectorAll('.tipo-captura-btn').forEach(b => b.classList.toggle('active', b === btn));
     applyGuideForTipo(currentCaptureTipo);
     updateCamSuggestionLabel();
     const s = getActiveSession();
     if(s) applySectorCameraUI(s.setor);
+    stopCamera();
+    startCamera();
   });
 });
 
@@ -570,7 +634,7 @@ function capturePhoto(){
   ctx.fillText(line1, padX, boxY + lineH*0.95 + 5);
   ctx.fillText(line2, padX, boxY + lineH*1.95 + 5);
 
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.68);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.80);
 
   window._pendingPhoto = { dataUrl, angle, outOfLevel, timeLabel: ts.label, geoLabel: geoLabelRaw };
   $('confirm-img').src = dataUrl;
@@ -698,8 +762,7 @@ function lerDadosDoFormulario(){
     const ate = $('input-vao-ate').value.trim();
     if(!de || !ate){ toast('Informe o vão (de/até).'); return null; }
     const celosas = $('input-vao-celosas').value.trim();
-    if(!celosas){ toast('Informe a quantidade de celosas instaladas.'); return null; }
-    return { tipo:'vao', vaoDe: de, vaoAte: ate, celosas, ponto: undefined };
+    return { tipo:'vao', vaoDe: de, vaoAte: ate, celosas: celosas || undefined, ponto: undefined };
   }
   const ponto = $('input-ponto').value.trim();
   if(!ponto){ toast('Informe o número do ponto.'); return null; }

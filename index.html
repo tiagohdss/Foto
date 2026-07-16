@@ -80,7 +80,7 @@
   <!-- SCREEN: CAMERA -->
   <div class="screen" id="screen-camera">
     <div class="setor-flag" id="cam-setor-flag">CCM/B2</div>
-    <div class="cam-wrap">
+    <div class="cam-wrap" id="cam-wrap">
       <div class="point-flag">
         <span id="cam-nota-label">Nota —</span>
         <span id="cam-point-label">Ponto —</span>
@@ -91,13 +91,19 @@
         <div class="guide-msg" id="guide-msg-ponto">Encaixe o poste inteiro, da base ao topo</div>
         <div class="guide-box-vao guide-box-vao-esq" id="guide-box-vao-esq" style="display:none;"></div>
         <div class="guide-box-vao guide-box-vao-dir" id="guide-box-vao-dir" style="display:none;"></div>
-        <div class="guide-msg" id="guide-msg-vao" style="display:none;">Encaixe os dois postes, um de cada lado, com o vão no meio</div>
+        <div class="guide-msg" id="guide-msg-vao" style="display:none;">📱 Gire o celular na horizontal (deitado) pra pegar mais ângulo — encaixe os dois postes, um de cada lado, com o vão no meio</div>
         <div class="level-line-v-fixed" id="level-line-v-fixed"></div>
         <div class="level-line-v" id="level-line-v"></div>
         <div class="angle-badge" id="angle-badge">sensor indisponível</div>
+        <div class="focus-ring" id="focus-ring"></div>
+        <div class="focus-hint" id="focus-hint">Toque na tela pra focar/clarear longe da luz</div>
       </div>
     </div>
     <div class="cam-controls">
+      <div class="field" id="exposure-control" style="display:none; margin-bottom:12px;">
+        <label class="field-label">Ajuste de exposição (mais escuro ↔ mais claro)</label>
+        <input type="range" id="exposure-slider" style="width:100%;">
+      </div>
       <div class="row2" id="tipo-captura-toggle" style="margin-bottom:12px;">
         <button type="button" class="btn-secondary tipo-captura-btn active" data-valor="ponto">Ponto</button>
         <button type="button" class="btn-secondary tipo-captura-btn" data-valor="vao">Vão</button>
