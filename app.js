@@ -368,12 +368,11 @@ let videoTrack = null;
 
 async function startCamera(){
   try{
-    const paisagem = currentCaptureTipo === 'vao';
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: 'environment',
-        width: { ideal: paisagem ? 1707 : 1280 },
-        height: { ideal: paisagem ? 1280 : 1707 }
+        width: { ideal: 1280 },
+        height: { ideal: 1707 }
       },
       audio: false
     });
@@ -447,7 +446,6 @@ let currentCaptureTipo = 'ponto'; // Ponto ou Vão — decidido antes de captura
 
 function applyGuideForTipo(tipo){
   const ehVao = tipo === 'vao';
-  $('cam-wrap').classList.toggle('paisagem', ehVao);
   $('guide-box-ponto').style.display = ehVao ? 'none' : 'block';
   $('guide-msg-ponto').style.display = ehVao ? 'none' : 'block';
   $('guide-box-vao-esq').style.display = ehVao ? 'block' : 'none';
@@ -480,15 +478,13 @@ function updateCamSuggestionLabel(){
 
 document.querySelectorAll('.tipo-captura-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    if(currentCaptureTipo === btn.dataset.valor) return; // já está nesse tipo, não precisa reiniciar
+    if(currentCaptureTipo === btn.dataset.valor) return;
     currentCaptureTipo = btn.dataset.valor;
     document.querySelectorAll('.tipo-captura-btn').forEach(b => b.classList.toggle('active', b === btn));
     applyGuideForTipo(currentCaptureTipo);
     updateCamSuggestionLabel();
     const s = getActiveSession();
     if(s) applySectorCameraUI(s.setor);
-    stopCamera();
-    startCamera();
   });
 });
 
