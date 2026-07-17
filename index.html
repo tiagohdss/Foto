@@ -101,8 +101,12 @@
     </div>
     <div class="cam-controls">
       <div class="field" id="zoom-control" style="display:none; margin-bottom:12px;">
-        <label class="field-label">Zoom (afastar ↔ aproximar)</label>
-        <input type="range" id="zoom-slider" style="width:100%;">
+        <label class="field-label">Zoom</label>
+        <div class="row3" id="zoom-buttons">
+          <button type="button" class="btn-secondary zoom-btn active" data-valor="1">1x</button>
+          <button type="button" class="btn-secondary zoom-btn" data-valor="2">2x</button>
+          <button type="button" class="btn-secondary zoom-btn" data-valor="3">3x</button>
+        </div>
       </div>
       <div class="field" id="exposure-control" style="display:none; margin-bottom:12px;">
         <label class="field-label">Ajuste de exposição (mais escuro ↔ mais claro)</label>
