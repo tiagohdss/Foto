@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leitor de Relatórios — B. Tobace (uso interno)</title>
+<meta name="robots" content="noindex, nofollow">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --verde: #23794F;
+    --verde-escuro: #0B3D23;
+    --cinza-borda: #D3D1C7;
+    --cinza-texto: #5F5E5A;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    font-family: Arial, Calibri, -apple-system, sans-serif;
+    background:#F5F5F5; margin:0; padding:28px 20px; color:#1a1a1a;
+  }
+  .container{ max-width:820px; margin:0 auto; }
+  .tag{
+    display:inline-block; background:var(--verde-escuro); color:#fff; font-size:11px; font-weight:bold;
+    padding:3px 10px; border-radius:20px; margin-bottom:10px; letter-spacing:0.5px;
+  }
+  h1{ color:var(--verde-escuro); font-size:22px; margin:4px 0 6px; }
+  p.desc{ color:var(--cinza-texto); font-size:14px; margin:0 0 22px; line-height:1.5; }
+
+  .drop-zone{
+    border:2.5px dashed var(--verde); border-radius:12px; padding:44px 20px; text-align:center;
+    background:#fff; cursor:pointer; transition:background 0.15s;
+  }
+  .drop-zone.dragover{ background:#E1F5EE; }
+  .drop-zone p{ margin:0; color:var(--verde-escuro); font-size:15px; font-weight:bold; }
+  .drop-zone span{ display:block; margin-top:6px; color:var(--cinza-texto); font-size:12px; font-weight:normal; }
+  input[type=file]{ display:none; }
+
+  .status{ font-size:13px; color:var(--cinza-texto); margin-top:14px; min-height:18px; }
+
+  table{ width:100%; border-collapse:collapse; margin-top:18px; background:#fff; display:none; }
+  th, td{ border:1px solid var(--cinza-borda); padding:8px 10px; font-size:13px; text-align:left; }
+  th{ background:var(--verde-escuro); color:#fff; font-size:12px; }
+  tr:nth-child(even){ background:#FAFAF8; }
+  .arquivo-col{ color:#999; font-size:11px; }
+
+  .btn{
+    background:var(--verde); color:#fff; border:none; border-radius:8px; padding:13px 22px;
+    font-size:15px; font-weight:bold; cursor:pointer; margin-top:18px; display:none;
+  }
+  .btn:hover{ background:var(--verde-escuro); }
+  .btn:disabled{ opacity:0.5; cursor:default; }
+
+  .aviso{
+    margin-top:26px; padding:12px 16px; background:#FDF6E3; border:1px solid #E9D9A0; border-radius:8px;
+    font-size:12px; color:#6b5a1e; line-height:1.5;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <span class="tag">USO INTERNO — NÃO COMPARTILHAR</span>
+  <h1>Leitor de Relatórios — CCM/B2</h1>
+  <p class="desc">Arraste um ou vários PDFs de relatório do setor CCM/B2 (os mesmos gerados pelo app e recebidos pelo WhatsApp) para montar uma planilha com Nota, Ponto/Vão e Encarregado — uma linha por página do relatório.</p>
+
+  <div class="drop-zone" id="drop-zone">
+    <p>Arraste os PDFs aqui</p>
+    <span>ou toque pra escolher os arquivos do celular/computador</span>
+    <input type="file" id="file-input" accept="application/pdf" multiple>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <table id="result-table">
+    <thead><tr><th>Nota</th><th>Ponto/Vão</th><th>Encarregado</th><th>Arquivo de origem</th></tr></thead>
+    <tbody id="result-body"></tbody>
+  </table>
+
+  <button class="btn" id="btn-download">Baixar Excel (.xlsx)</button>
+
+  <div class="aviso">
+    Essa ferramenta só lê relatórios do setor <strong>CCM/B2</strong> — PDFs de
+    Viabilidade têm páginas extras de formulário que não seguem o mesmo
+    padrão e serão ignoradas automaticamente (contadas como "não
+    reconhecidas"). Nada é enviado pra nenhum servidor — a leitura
+    acontece inteiramente no seu navegador.
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let linhas = []; // { nota, item, encarregado, arquivo }
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const statusEl = document.getElementById('status');
+const table = document.getElementById('result-table');
+const tbody = document.getElementById('result-body');
+const btnDownload = document.getElementById('btn-download');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  processarArquivos(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => processarArquivos(fileInput.files));
+
+async function processarArquivos(fileList){
+  const arquivos = Array.from(fileList).filter(f =>
+    f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+  );
+  if(!arquivos.length){
+    statusEl.textContent = 'Nenhum PDF válido selecionado.';
+    return;
+  }
+
+  statusEl.textContent = 'Lendo ' + arquivos.length + ' arquivo(s)...';
+  linhas = [];
+  let paginasIgnoradas = 0;
+  let arquivosComErro = [];
+
+  for(const arquivo of arquivos){
+    try{
+      const buffer = await arquivo.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+
+      for(let i = 1; i <= pdf.numPages; i++){
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const texto = content.items.map(it => it.str).join(' ');
+
+        const notaMatch = texto.match(/Nota\s+([A-Za-z0-9._-]+)/);
+        const itemMatch = texto.match(/\b(P\d+|V\d+-\d+)\b/);
+        const encMatch = texto.match(/Encarregado:\s*([^(]+)\(/);
+
+        if(notaMatch && itemMatch){
+          linhas.push({
+            nota: notaMatch[1],
+            item: itemMatch[1],
+            encarregado: encMatch ? encMatch[1].trim() : '—',
+            arquivo: arquivo.name
+          });
+        } else {
+          paginasIgnoradas++;
+        }
+      }
+    }catch(e){
+      arquivosComErro.push(arquivo.name);
+    }
+  }
+
+  renderizarTabela();
+
+  let msg = linhas.length + ' registro(s) encontrado(s) em ' + arquivos.length + ' arquivo(s).';
+  if(paginasIgnoradas) msg += ' ' + paginasIgnoradas + ' página(s) não reconhecida(s) foram ignoradas.';
+  if(arquivosComErro.length) msg += ' Erro ao abrir: ' + arquivosComErro.join(', ') + '.';
+  statusEl.textContent = msg;
+}
+
+function renderizarTabela(){
+  tbody.innerHTML = '';
+  linhas.forEach(l => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + l.nota + '</td>' +
+      '<td>' + l.item + '</td>' +
+      '<td>' + l.encarregado + '</td>' +
+      '<td class="arquivo-col">' + l.arquivo + '</td>';
+    tbody.appendChild(tr);
+  });
+  table.style.display = linhas.length ? 'table' : 'none';
+  btnDownload.style.display = linhas.length ? 'inline-block' : 'none';
+}
+
+btnDownload.addEventListener('click', () => {
+  const dados = linhas.map(l => ({ 'Nota': l.nota, 'Ponto/Vão': l.item, 'Encarregado': l.encarregado }));
+  const ws = XLSX.utils.json_to_sheet(dados);
+  ws['!cols'] = [{ wch: 14 }, { wch: 12 }, { wch: 28 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Relatorios');
+  const dataStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, 'relatorios_ccm_b2_' + dataStr + '.xlsx');
+});
+</script>
+</body>
+</html>
