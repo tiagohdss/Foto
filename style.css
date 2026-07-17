@@ -71,6 +71,7 @@
   .btn-danger{ color:var(--vermelho); border-color:var(--vermelho); }
   .stack{ display:flex; flex-direction:column; gap:10px; }
   .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
 
   .resume-card{
     border:2px solid var(--verde); border-radius:12px; padding:16px 18px; margin-top:20px;
@@ -156,7 +157,7 @@
   }
 
   /* Seletor de setor e "melhor dia" — botão vira verde quando selecionado */
-  .setor-btn.active, .melhor-dia-btn.active, .cadastro-tipo-btn.active, .edit-tipo-btn.active, .solicitar-tipo-btn.active, .tipo-captura-btn.active, .pf-tipo-btn.active{
+  .setor-btn.active, .melhor-dia-btn.active, .cadastro-tipo-btn.active, .edit-tipo-btn.active, .solicitar-tipo-btn.active, .tipo-captura-btn.active, .pf-tipo-btn.active, .zoom-btn.active{
     background: var(--verde); color:#fff; border-color:var(--verde);
   }
 

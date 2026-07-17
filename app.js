@@ -390,28 +390,6 @@ async function startCamera(){
       try{ imageCapture = new ImageCapture(videoTrack); }catch(e){ imageCapture = null; }
     }
 
-    /* tentativa de fugir da lente ultra-angular: em vários aparelhos com
-       múltiplas câmeras traseiras, pedir um leve zoom acima do mínimo
-       faz o celular trocar sozinho pra lente principal. Não é garantido
-       — se o aparelho não suportar zoom, ou já usar a lente principal,
-       isso simplesmente não faz efeito nenhum, sem quebrar a captura. */
-    try{
-      const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : null;
-      if(caps && caps.zoom && caps.zoom.max > caps.zoom.min){
-        /* zoom=2 é o valor mais comumente relatado como o que costuma
-           empurrar o aparelho a trocar da lente ultra-angular pra
-           principal; se não estiver na faixa suportada, tenta só um
-           passo acima do mínimo como segunda tentativa */
-        let zoomAlvo;
-        if(caps.zoom.min <= 2 && caps.zoom.max >= 2){
-          zoomAlvo = 2;
-        } else {
-          zoomAlvo = Math.min(caps.zoom.min + (caps.zoom.step || 1), caps.zoom.max);
-        }
-        await videoTrack.applyConstraints({ advanced: [{ zoom: zoomAlvo }] });
-      }
-    }catch(e){ /* aparelho não suporta — segue sem zoom */ }
-
     setupZoomControlIfSupported();
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão do navegador.');
@@ -427,13 +405,8 @@ function setupZoomControlIfSupported(){
   try{
     const caps = videoTrack.getCapabilities();
     if(caps.zoom && caps.zoom.max > caps.zoom.min){
-      const slider = $('zoom-slider');
-      slider.min = caps.zoom.min;
-      slider.max = caps.zoom.max;
-      slider.step = caps.zoom.step || 1;
-      const atual = videoTrack.getSettings ? videoTrack.getSettings().zoom : null;
-      slider.value = (atual !== null && atual !== undefined) ? atual : caps.zoom.min;
       control.style.display = 'block';
+      document.querySelectorAll('.zoom-btn').forEach(b => b.classList.toggle('active', b.dataset.valor === '1'));
     } else {
       control.style.display = 'none';
     }
@@ -442,10 +415,20 @@ function setupZoomControlIfSupported(){
   }
 }
 
-$('zoom-slider').addEventListener('input', ()=>{
-  if(!videoTrack) return;
-  const val = parseFloat($('zoom-slider').value);
-  videoTrack.applyConstraints({ advanced: [{ zoom: val }] }).catch(()=>{});
+document.querySelectorAll('.zoom-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(!videoTrack) return;
+    document.querySelectorAll('.zoom-btn').forEach(b => b.classList.toggle('active', b === btn));
+    let caps;
+    try{ caps = videoTrack.getCapabilities(); }catch(e){ caps = null; }
+    let val = parseFloat(btn.dataset.valor);
+    if(caps && caps.zoom){
+      val = Math.min(Math.max(val, caps.zoom.min), caps.zoom.max);
+    }
+    videoTrack.applyConstraints({ advanced: [{ zoom: val }] }).catch(()=>{
+      toast('Esse aparelho não aceitou esse nível de zoom.');
+    });
+  });
 });
 
 function setupExposureControlIfSupported(){
