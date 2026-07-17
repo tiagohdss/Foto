@@ -411,10 +411,42 @@ async function startCamera(){
         await videoTrack.applyConstraints({ advanced: [{ zoom: zoomAlvo }] });
       }
     }catch(e){ /* aparelho não suporta — segue sem zoom */ }
+
+    setupZoomControlIfSupported();
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão do navegador.');
   }
 }
+
+function setupZoomControlIfSupported(){
+  const control = $('zoom-control');
+  if(!videoTrack || typeof videoTrack.getCapabilities !== 'function'){
+    control.style.display = 'none';
+    return;
+  }
+  try{
+    const caps = videoTrack.getCapabilities();
+    if(caps.zoom && caps.zoom.max > caps.zoom.min){
+      const slider = $('zoom-slider');
+      slider.min = caps.zoom.min;
+      slider.max = caps.zoom.max;
+      slider.step = caps.zoom.step || 1;
+      const atual = videoTrack.getSettings ? videoTrack.getSettings().zoom : null;
+      slider.value = (atual !== null && atual !== undefined) ? atual : caps.zoom.min;
+      control.style.display = 'block';
+    } else {
+      control.style.display = 'none';
+    }
+  }catch(e){
+    control.style.display = 'none';
+  }
+}
+
+$('zoom-slider').addEventListener('input', ()=>{
+  if(!videoTrack) return;
+  const val = parseFloat($('zoom-slider').value);
+  videoTrack.applyConstraints({ advanced: [{ zoom: val }] }).catch(()=>{});
+});
 
 function setupExposureControlIfSupported(){
   const control = $('exposure-control');
