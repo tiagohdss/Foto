@@ -3,7 +3,7 @@ const STORAGE_KEY = 'tobace_relatorio_sessoes';
 const OLD_STORAGE_KEY = 'tobace_relatorio_sessao'; // formato antigo (1 sessão só), migrado se existir
 const TOL_MIN = 85;
 const TOL_MAX = 95;
-const MAX_PHOTO_WIDTH = 1400;
+const MAX_PHOTO_WIDTH = 1800;
 const SEARCH_THRESHOLD = 5; // a partir de quantas notas o campo de busca aparece
 const LOGO_MARK_URL = 'assets/logo-mark-color.png';
 
@@ -366,6 +366,8 @@ $('btn-start-session').addEventListener('click', async ()=>{
 /* ===================== Câmera ===================== */
 let videoTrack = null;
 
+let imageCapture = null;
+
 async function startCamera(){
   try{
     stream = await navigator.mediaDevices.getUserMedia({
@@ -379,6 +381,14 @@ async function startCamera(){
     $('video').srcObject = stream;
     videoTrack = stream.getVideoTracks()[0];
     setupExposureControlIfSupported();
+
+    /* ImageCapture acessa a foto de alta resolução de verdade da câmera,
+       em vez do quadro do vídeo ao vivo (que é bem mais baixa resolução).
+       Nem todo navegador suporta — sem suporte, cai no método antigo. */
+    imageCapture = null;
+    if(typeof ImageCapture !== 'undefined'){
+      try{ imageCapture = new ImageCapture(videoTrack); }catch(e){ imageCapture = null; }
+    }
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão do navegador.');
   }
@@ -439,6 +449,7 @@ function stopCamera(){
     stream.getTracks().forEach(t => t.stop());
     stream = null;
     videoTrack = null;
+    imageCapture = null;
   }
 }
 
@@ -524,18 +535,41 @@ function truncateToWidth(ctx, text, maxWidth){
   return t + '…';
 }
 
-function capturePhoto(){
+async function capturePhoto(){
   const video = $('video');
   if(!video.videoWidth){ toast('Aguarde a câmera carregar.'); return; }
 
-  const scale = MAX_PHOTO_WIDTH / video.videoWidth;
+  $('btn-capture').disabled = true;
+
+  let sourceImg = null; // ImageBitmap/Image de alta resolução, quando disponível
+  let srcW = video.videoWidth, srcH = video.videoHeight;
+
+  if(imageCapture){
+    try{
+      const blob = await imageCapture.takePhoto();
+      sourceImg = await createImageBitmap(blob);
+      srcW = sourceImg.width;
+      srcH = sourceImg.height;
+    }catch(e){
+      sourceImg = null; // falhou — cai no método antigo (quadro do vídeo) abaixo
+    }
+  }
+
+  const scale = MAX_PHOTO_WIDTH / srcW;
   const w = MAX_PHOTO_WIDTH;
-  const h = Math.round(video.videoHeight * scale);
+  const h = Math.round(srcH * scale);
 
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, w, h);
+  if(sourceImg){
+    ctx.drawImage(sourceImg, 0, 0, w, h);
+    sourceImg.close && sourceImg.close();
+  } else {
+    ctx.drawImage(video, 0, 0, w, h);
+  }
+
+  $('btn-capture').disabled = false;
 
   const s = getActiveSession();
   const mostraNivel = currentCaptureTipo === 'ponto' && nivelHabilitado(s ? s.setor : 'medicao');
