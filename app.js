@@ -563,7 +563,15 @@ async function capturePhoto(){
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
   if(sourceImg){
-    ctx.drawImage(sourceImg, 0, 0, w, h);
+    /* corta uma margem das bordas — em alguns aparelhos, a foto de alta
+       resolução vem de uma lente diferente (provável ultra-angular),
+       que tem vinheta escura natural nos cantos */
+    const cropFrac = 0.10;
+    const cx = srcW * cropFrac;
+    const cy = srcH * cropFrac;
+    const cw = srcW * (1 - 2 * cropFrac);
+    const ch = srcH * (1 - 2 * cropFrac);
+    ctx.drawImage(sourceImg, cx, cy, cw, ch, 0, 0, w, h);
     sourceImg.close && sourceImg.close();
   } else {
     ctx.drawImage(video, 0, 0, w, h);
