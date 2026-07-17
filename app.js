@@ -389,6 +389,28 @@ async function startCamera(){
     if(typeof ImageCapture !== 'undefined'){
       try{ imageCapture = new ImageCapture(videoTrack); }catch(e){ imageCapture = null; }
     }
+
+    /* tentativa de fugir da lente ultra-angular: em vários aparelhos com
+       múltiplas câmeras traseiras, pedir um leve zoom acima do mínimo
+       faz o celular trocar sozinho pra lente principal. Não é garantido
+       — se o aparelho não suportar zoom, ou já usar a lente principal,
+       isso simplesmente não faz efeito nenhum, sem quebrar a captura. */
+    try{
+      const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : null;
+      if(caps && caps.zoom && caps.zoom.max > caps.zoom.min){
+        /* zoom=2 é o valor mais comumente relatado como o que costuma
+           empurrar o aparelho a trocar da lente ultra-angular pra
+           principal; se não estiver na faixa suportada, tenta só um
+           passo acima do mínimo como segunda tentativa */
+        let zoomAlvo;
+        if(caps.zoom.min <= 2 && caps.zoom.max >= 2){
+          zoomAlvo = 2;
+        } else {
+          zoomAlvo = Math.min(caps.zoom.min + (caps.zoom.step || 1), caps.zoom.max);
+        }
+        await videoTrack.applyConstraints({ advanced: [{ zoom: zoomAlvo }] });
+      }
+    }catch(e){ /* aparelho não suporta — segue sem zoom */ }
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão do navegador.');
   }
@@ -546,7 +568,15 @@ async function capturePhoto(){
 
   if(imageCapture){
     try{
-      const blob = await imageCapture.takePhoto();
+      let photoSettings = undefined;
+      try{
+        const caps = await imageCapture.getPhotoCapabilities();
+        if(caps && caps.imageWidth && caps.imageHeight){
+          photoSettings = { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max };
+        }
+      }catch(e){ /* aparelho não expõe as capacidades — tira sem especificar */ }
+
+      const blob = photoSettings ? await imageCapture.takePhoto(photoSettings) : await imageCapture.takePhoto();
       sourceImg = await createImageBitmap(blob);
       srcW = sourceImg.width;
       srcH = sourceImg.height;
