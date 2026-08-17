@@ -1469,7 +1469,8 @@ $('btn-generate-pdf').addEventListener('click', async ()=>{
   try{
     const doc = await generatePdf(s);
     window._lastPdf = doc;
-    window._lastPdfName = `relatorio_nota_${s.nota}.pdf`;
+    const dataArquivo = formatTimestamp(new Date()).data.replace(/\//g, '-'); // DD-MM-AAAA
+    window._lastPdfName = `relatorio_nota_${s.nota}_${dataArquivo}.pdf`;
     window._lastPdfSessionId = s.id;
     s.pdfGerado = true;
     await saveSessions();
@@ -1608,6 +1609,28 @@ let cadastroUsuario = null; // { nome, tipo: 'GD'|'Cesto' }
 let tapCount = 0;
 let tapTimer = null;
 
+const LISTA_ENCARREGADOS = [
+  'ADALBERTO MARQUES DA SILVA',
+  'ALEF MICHAEL DA SILVA DO NASCIMENTO',
+  'CARLOS ADALBERTO OTOLORA DA SILVA',
+  'CLODOALDO APARECIDO CABREIRA',
+  'CRISTIANO DA SILVA NASCIMENTO',
+  'EVERALDO DOS REIS JURITI',
+  'GENEILTON DE LIMA NASCIMENTO',
+  'JOSE EDILSON PEREIRA DA SILVA',
+  'LUAN VITOR NAZARIO RODRIGUES',
+  'MOISES HONORIO',
+  'NIVALDO LIMA DE JESUS',
+  'OLAIR MARCELINO',
+  'VILMAR VIEIRA PEREIRA'
+];
+
+function preencherSelectDeNomes(selectEl){
+  selectEl.innerHTML = '<option value="">Selecione...</option>' +
+    LISTA_ENCARREGADOS.map(n => `<option value="${n}">${n}</option>`).join('') +
+    '<option value="__outro__">Outro (digitar nome)</option>';
+}
+
 function nivelHabilitado(setor){
   /* nível 90° só aparece pra equipe GD, no setor CCM/B2. Viabilidade
      nunca usa nível, Cesto nunca usa nível, mesmo em CCM/B2. */
@@ -1619,6 +1642,7 @@ async function initCadastroGate(){
     cadastroUsuario = await idbGet(CADASTRO_KEY);
   }catch(e){ cadastroUsuario = null; }
   if(!cadastroUsuario){
+    preencherSelectDeNomes($('cadastro-nome-select'));
     $('cadastro-overlay').classList.add('active');
   } else {
     updateCadastroInfoLabel();
@@ -1637,10 +1661,15 @@ document.querySelectorAll('.cadastro-tipo-btn').forEach(btn=>{
   });
 });
 
+$('cadastro-nome-select').addEventListener('change', ()=>{
+  $('cadastro-nome-outro').style.display = ($('cadastro-nome-select').value === '__outro__') ? 'block' : 'none';
+});
+
 $('btn-salvar-cadastro').addEventListener('click', async ()=>{
-  const nome = $('cadastro-nome').value.trim();
+  const selecionado = $('cadastro-nome-select').value;
+  const nome = selecionado === '__outro__' ? $('cadastro-nome-outro').value.trim() : selecionado;
   const tipoBtn = document.querySelector('.cadastro-tipo-btn.active');
-  if(!nome){ toast('Digite seu nome.'); return; }
+  if(!nome){ toast('Selecione ou digite seu nome.'); return; }
   if(!tipoBtn){ toast('Selecione o tipo de equipe.'); return; }
   cadastroUsuario = { nome, tipo: tipoBtn.dataset.valor };
   try{ await idbSet(CADASTRO_KEY, cadastroUsuario); }catch(e){ /* segue mesmo assim */ }
@@ -1668,7 +1697,12 @@ $('btn-pin-cancelar').addEventListener('click', ()=>{
 $('btn-pin-confirmar').addEventListener('click', ()=>{
   if($('pin-input').value === ADMIN_PIN){
     $('pin-overlay').classList.remove('active');
-    $('edit-cadastro-nome').value = cadastroUsuario ? cadastroUsuario.nome : '';
+    preencherSelectDeNomes($('edit-cadastro-nome-select'));
+    const nomeAtual = cadastroUsuario ? cadastroUsuario.nome : '';
+    const estaNaLista = LISTA_ENCARREGADOS.includes(nomeAtual);
+    $('edit-cadastro-nome-select').value = estaNaLista ? nomeAtual : (nomeAtual ? '__outro__' : '');
+    $('edit-cadastro-nome-outro').style.display = estaNaLista ? 'none' : 'block';
+    $('edit-cadastro-nome-outro').value = estaNaLista ? '' : nomeAtual;
     document.querySelectorAll('.edit-tipo-btn').forEach(b=>{
       b.classList.toggle('active', cadastroUsuario && b.dataset.valor === cadastroUsuario.tipo);
     });
@@ -1684,14 +1718,19 @@ document.querySelectorAll('.edit-tipo-btn').forEach(btn=>{
   });
 });
 
+$('edit-cadastro-nome-select').addEventListener('change', ()=>{
+  $('edit-cadastro-nome-outro').style.display = ($('edit-cadastro-nome-select').value === '__outro__') ? 'block' : 'none';
+});
+
 $('btn-edit-cadastro-cancelar').addEventListener('click', ()=>{
   $('edit-cadastro-overlay').classList.remove('active');
 });
 
 $('btn-edit-cadastro-salvar').addEventListener('click', async ()=>{
-  const nome = $('edit-cadastro-nome').value.trim();
+  const selecionado = $('edit-cadastro-nome-select').value;
+  const nome = selecionado === '__outro__' ? $('edit-cadastro-nome-outro').value.trim() : selecionado;
   const tipoBtn = document.querySelector('.edit-tipo-btn.active');
-  if(!nome){ toast('Digite o nome.'); return; }
+  if(!nome){ toast('Selecione ou digite o nome.'); return; }
   if(!tipoBtn){ toast('Selecione o tipo de equipe.'); return; }
   cadastroUsuario = { nome, tipo: tipoBtn.dataset.valor };
   try{ await idbSet(CADASTRO_KEY, cadastroUsuario); }catch(e){ /* segue mesmo assim */ }
