@@ -1805,9 +1805,28 @@ document.addEventListener('visibilitychange', async ()=>{
   }
 });
 
+/* Pede ao navegador pra NÃO limpar automaticamente os dados desse app
+   quando o celular precisar liberar espaço/memória — sem isso, o
+   IndexedDB é tratado como "descartável" e pode ser apagado sozinho
+   pelo sistema, mesmo sem o usuário fazer nada. Não é garantido em
+   todo aparelho/navegador, mas aumenta bastante a chance de ser
+   respeitado. */
+async function pedirArmazenamentoPersistente(){
+  if(navigator.storage && navigator.storage.persist){
+    try{
+      const jaPersistente = await navigator.storage.persisted();
+      if(!jaPersistente){
+        const concedido = await navigator.storage.persist();
+        console.log('Armazenamento persistente:', concedido ? 'concedido' : 'negado pelo navegador');
+      }
+    }catch(e){ /* navegador sem suporte a essa API — segue sem ela */ }
+  }
+}
+
 /* ===================== Início ===================== */
 initStartScreen();
 initCadastroGate();
+pedirArmazenamentoPersistente();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
