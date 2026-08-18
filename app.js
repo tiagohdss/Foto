@@ -1788,6 +1788,23 @@ window.addEventListener('error', (e)=>{
   toast('Erro no app: ' + (e.message || 'falha desconhecida') + ' — tire um print e envie.', 6000);
 });
 
+/* Proteção contra perda de dados ao trocar de aba/janela: se essa mesma
+   sessão do app ficou em segundo plano e outra aba/instância salvou
+   dados novos nesse meio tempo, a versão em memória aqui está
+   desatualizada. Sem isso, a próxima gravação sobrescreveria o banco
+   com dado velho, apagando o que a outra aba salvou. Ao voltar a ficar
+   visível, recarrega a lista de sessões do banco antes de continuar. */
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState === 'visible'){
+    try{
+      sessions = await loadSessions();
+    }catch(e){ /* mantém o que já estava em memória se a leitura falhar */ }
+    if($('screen-start').classList.contains('active')){
+      renderStartScreen();
+    }
+  }
+});
+
 /* ===================== Início ===================== */
 initStartScreen();
 initCadastroGate();
