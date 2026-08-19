@@ -146,7 +146,7 @@ async function idbGet(key){
     req.onsuccess = ()=> resolve(req.result);
     req.onerror = ()=> reject(req.error);
   });
-  return withTimeout(p, 6000, 'leitura do banco local');
+  return withTimeout(p, 20000, 'leitura do banco local');
 }
 
 async function idbSet(key, value){
@@ -157,7 +157,7 @@ async function idbSet(key, value){
     tx.oncomplete = ()=> resolve(true);
     tx.onerror = ()=> reject(tx.error);
   });
-  return withTimeout(p, 6000, 'gravação no banco local');
+  return withTimeout(p, 20000, 'gravação no banco local');
 }
 
 /* ===================== Utilitários ===================== */
@@ -195,13 +195,26 @@ function saveSessions(){
 }
 
 async function loadSessions(){
-  try{
+  const tentativa = async ()=>{
     const data = await idbGet(DB_KEY);
     if(Array.isArray(data)) return data;
-  }catch(e){ console.error(e); }
+    return []; // chave nunca foi criada ainda — legitimamente vazio (usuário novo)
+  };
+
+  try{
+    return await tentativa();
+  }catch(e){ console.error('1ª tentativa de carregar falhou:', e); }
+
+  /* segunda tentativa, com uma pequena espera — cobre inicializações
+     lentas do banco de dados logo depois do app ser reaberto */
+  await new Promise(r => setTimeout(r, 1500));
+  try{
+    return await tentativa();
+  }catch(e){ console.error('2ª tentativa de carregar falhou:', e); }
 
   /* migração de dados de versões antigas do app, que usavam localStorage
-     (limite pequeno, ~5MB — por isso a troca pra IndexedDB) */
+     (limite pequeno, ~5MB — por isso a troca pra IndexedDB). Só tenta
+     isso depois de esgotar as tentativas de ler o IndexedDB. */
   try{
     const rawArray = localStorage.getItem(STORAGE_KEY);
     if(rawArray){
@@ -224,7 +237,11 @@ async function loadSessions(){
     }
   }catch(e){ console.error(e); }
 
-  return [];
+  /* não conseguiu confirmar a leitura de jeito nenhum — retorna null
+     (não um array vazio) pra sinalizar falha real. Isso evita que o
+     app trate "não consegui ler" como "não existe nada salvo" e
+     arrisque sobrescrever dados de verdade depois. */
+  return null;
 }
 
 function getActiveSession(){
@@ -269,11 +286,28 @@ function formatTimestamp(d){
 }
 
 /* ===================== Tela inicial ===================== */
+let cargaDeDadosFalhou = false;
+
 async function initStartScreen(){
-  sessions = await loadSessions();
+  const resultado = await loadSessions();
+  if(resultado === null){
+    cargaDeDadosFalhou = true;
+    sessions = [];
+    $('erro-carregamento-block').style.display = 'block';
+    $('no-session-block').style.display = 'none';
+  } else {
+    cargaDeDadosFalhou = false;
+    sessions = resultado;
+    $('erro-carregamento-block').style.display = 'none';
+    $('no-session-block').style.display = 'block';
+  }
   activeSessionId = null;
   renderStartScreen();
 }
+
+$('btn-tentar-carregar-de-novo').addEventListener('click', ()=>{
+  initStartScreen();
+});
 
 function renderStartScreen(){
   const searchTerm = $('input-search-nota').value.trim().toLowerCase();
@@ -339,6 +373,10 @@ document.querySelectorAll('.setor-btn').forEach(btn=>{
 });
 
 $('btn-start-session').addEventListener('click', async ()=>{
+  if(cargaDeDadosFalhou){
+    toast('Não é possível criar uma nota agora — os dados salvos ainda não foram confirmados.', 5000);
+    return;
+  }
   const val = $('input-nota').value.trim();
   if(!val){ toast('Digite o número da nota para continuar.'); return; }
 
