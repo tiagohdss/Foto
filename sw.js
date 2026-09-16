@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tobace-relatorio-v35';
+const CACHE_NAME = 'tobace-relatorio-v36';
 const ASSETS = [
   './',
   './index.html',

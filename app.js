@@ -1975,10 +1975,26 @@ async function pedirArmazenamentoPersistente(){
   }
 }
 
+/* Aviso simples de "app atualizado" — compara a versão atual com a
+   última vista nesse celular (guardada em localStorage, é só um texto
+   pequeno, não precisa do IndexedDB pra isso). Se for diferente (e não
+   for a primeiríssima vez abrindo o app), mostra um aviso rápido. */
+const APP_VERSION = 'v36'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
+function avisarSeAtualizado(){
+  try{
+    const vistaAnteriormente = localStorage.getItem('tobace_app_versao_vista');
+    if(vistaAnteriormente && vistaAnteriormente !== APP_VERSION){
+      toast('✓ App atualizado', 4000);
+    }
+    localStorage.setItem('tobace_app_versao_vista', APP_VERSION);
+  }catch(e){ /* localStorage indisponível — segue sem o aviso */ }
+}
+
 /* ===================== Início ===================== */
 initStartScreen();
 initCadastroGate();
 pedirArmazenamentoPersistente();
+avisarSeAtualizado();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
