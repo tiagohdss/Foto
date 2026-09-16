@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tobace-relatorio-v33';
+const CACHE_NAME = 'tobace-relatorio-v34';
 const ASSETS = [
   './',
   './index.html',
@@ -11,9 +11,19 @@ const ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
 ];
 
+/* Guarda cada arquivo separadamente — se um falhar (ex: instabilidade
+   de rede bem na hora da instalação), os outros continuam sendo
+   guardados normalmente. Antes, usava cache.addAll() que é "tudo ou
+   nada": se UM arquivo falhasse, NENHUM ficava guardado, e o app não
+   funcionava offline depois — mesmo sendo só uma falha pontual. */
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(()=>{})
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.all(ASSETS.map(async (url) => {
+        try{ await cache.add(url); }
+        catch(e){ /* esse arquivo específico falhou — segue tentando os outros */ }
+      }));
+    })
   );
   self.skipWaiting();
 });
