@@ -197,12 +197,25 @@ function genId(){
   return 'sess_' + Date.now() + '_' + Math.round(Math.random()*1e6);
 }
 
+function getCriadoEm(s){
+  if(s.criadoEm) return s.criadoEm;
+  const m = /^sess_(\d+)_/.exec(s.id || '');
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+function ehDeHoje(s){
+  const d = new Date(getCriadoEm(s));
+  const hoje = new Date();
+  return d.getFullYear() === hoje.getFullYear() && d.getMonth() === hoje.getMonth() && d.getDate() === hoje.getDate();
+}
+
 /* projeção leve de uma sessão (sem fotos) — usada só na lista da tela inicial */
 function toLightweight(s){
   return {
     id: s.id,
     nota: s.nota,
     setor: s.setor,
+    criadoEm: getCriadoEm(s),
     pointCount: s.points ? s.points.length : (typeof s.pointCount === 'number' ? s.pointCount : 0),
     pdfGerado: !!s.pdfGerado,
     compartilhadoEm: s.compartilhadoEm || null,
@@ -416,6 +429,11 @@ function renderStartScreen(){
     ? porSetor.filter(s => s.nota.toLowerCase().includes(searchTerm))
     : porSetor;
 
+  /* tira da seleção qualquer sessão que não esteja mais visível (setor
+     trocado, ou busca filtrando ela pra fora) */
+  const idsVisiveis = new Set(visibleSessions.map(s => s.id));
+  Array.from(selecionadas).forEach(id => { if(!idsVisiveis.has(id)) selecionadas.delete(id); });
+
   const list = $('sessions-list');
   list.innerHTML = '';
   const template = $('session-card-template');
@@ -437,6 +455,12 @@ function renderStartScreen(){
       countEl.textContent = pCount + (pCount===1 ? ' ponto registrado' : ' pontos registrados');
     }
     node.querySelector('.btn-gerar-pdf').textContent = s.pdfGerado ? 'Gerar PDF de novo' : 'Gerar PDF';
+    const checkbox = node.querySelector('.check-selecionar');
+    checkbox.checked = selecionadas.has(s.id);
+    checkbox.addEventListener('change', ()=>{
+      if(checkbox.checked) selecionadas.add(s.id); else selecionadas.delete(s.id);
+      atualizarBarraSelecao();
+    });
     node.querySelector('.btn-continuar').addEventListener('click', ()=>{
       activeSessionId = s.id;
       startGeoWatch();
@@ -449,6 +473,7 @@ function renderStartScreen(){
     });
     node.querySelector('.btn-descartar').addEventListener('click', async ()=>{
       if(confirm('Descartar a sessão da nota ' + s.nota + '? As fotos ainda não geradas em PDF serão perdidas.')){
+        selecionadas.delete(s.id);
         await discardSession(s.id);
         renderStartScreen();
       }
@@ -457,7 +482,114 @@ function renderStartScreen(){
   });
 
   $('no-results-msg').style.display = (searchTerm && visibleSessions.length === 0) ? 'block' : 'none';
+
+  const temMuitasParaSelecionar = visibleSessions.length > 1;
+  $('selecao-bar').style.display = temMuitasParaSelecionar ? 'flex' : 'none';
+  atualizarBarraSelecao();
 }
+
+let selecionadas = new Set();
+
+function atualizarBarraSelecao(){
+  const n = selecionadas.size;
+  $('selecao-info').textContent = n > 0 ? n + ' selecionada' + (n===1?'':'s') : '';
+  $('acao-em-massa-bar').style.display = n > 0 ? 'block' : 'none';
+}
+
+$('link-selecionar-hoje').addEventListener('click', ()=>{
+  const searchTerm = $('input-search-nota').value.trim().toLowerCase();
+  const porSetor = sessions.filter(s => (s.setor || 'medicao') === selectedSetor);
+  const visiveis = searchTerm ? porSetor.filter(s => s.nota.toLowerCase().includes(searchTerm)) : porSetor;
+  const deHoje = visiveis.filter(ehDeHoje);
+  if(!deHoje.length){ toast('Nenhuma nota de hoje encontrada nesse setor.'); return; }
+  deHoje.forEach(s => selecionadas.add(s.id));
+  renderStartScreen();
+});
+
+$('btn-gerar-enviar-selecionadas').addEventListener('click', async ()=>{
+  const ids = Array.from(selecionadas);
+  if(!ids.length) return;
+
+  const btn = $('btn-gerar-enviar-selecionadas');
+  btn.disabled = true;
+
+  const arquivos = [];
+  const falhas = [];
+  const processadosComSucesso = [];
+
+  /* processa uma sessão de cada vez — carrega os dados completos (com
+     fotos), gera o PDF, e descarta a versão completa da memória antes
+     de passar pra próxima. Gerar tudo de uma vez, com todas as fotos de
+     todas as sessões selecionadas na memória ao mesmo tempo, poderia
+     travar o navegador de novo em celulares mais fracos — o mesmo
+     problema que já corrigimos pro carregamento da tela inicial. */
+  for(let i = 0; i < ids.length; i++){
+    const id = ids[i];
+    btn.textContent = `Gerando ${i+1} de ${ids.length}…`;
+    const leve = sessions.find(x => x.id === id);
+    if(!leve){ continue; }
+    if(!getPointCount(leve)){ falhas.push(leve.nota + ' (sem pontos)'); continue; }
+
+    try{
+      let completa;
+      try{ completa = await idbGet(sessionKey(id)); }catch(e){ completa = null; }
+      if(!completa){ falhas.push(leve.nota); continue; }
+
+      const doc = await generatePdf(completa);
+      const dataArquivo = formatTimestamp(new Date()).data.replace(/\//g, '-');
+      const fname = `relatorio_nota_${completa.nota}_${dataArquivo}.pdf`;
+      const blob = doc.output('blob');
+      arquivos.push(new File([blob], fname, { type: 'application/pdf' }));
+
+      completa.pdfGerado = true;
+      await idbSet(sessionKey(id), completa);
+      const idx = sessions.findIndex(x => x.id === id);
+      if(idx >= 0) sessions[idx] = toLightweight(completa);
+      processadosComSucesso.push(id);
+    }catch(e){
+      falhas.push(leve.nota);
+      console.error('Falha ao gerar PDF em lote:', leve.nota, e);
+    }
+  }
+
+  await persistIndex();
+
+  if(arquivos.length){
+    btn.textContent = 'Enviando…';
+    let compartilhado = false;
+    if(navigator.canShare && navigator.canShare({ files: arquivos })){
+      try{
+        await navigator.share({ files: arquivos, title: 'Relatórios fotográficos', text: `${arquivos.length} relatório(s) — B. Tobace` });
+        compartilhado = true;
+      }catch(e){ /* cancelou o compartilhamento */ }
+    }
+    if(!compartilhado){
+      arquivos.forEach(f=>{
+        const url = URL.createObjectURL(f);
+        const a = document.createElement('a');
+        a.href = url; a.download = f.name; a.click();
+        URL.revokeObjectURL(url);
+      });
+      toast('Compartilhamento em lote não disponível nesse navegador — os PDFs foram baixados individualmente.', 6000);
+    } else {
+      const agora = Date.now();
+      processadosComSucesso.forEach(id=>{
+        const idx = sessions.findIndex(x => x.id === id);
+        if(idx >= 0) sessions[idx].compartilhadoEm = agora;
+      });
+      await persistIndex();
+    }
+  }
+
+  if(falhas.length){
+    toast('Falha ao gerar: ' + falhas.join(', '), 6000);
+  }
+
+  selecionadas.clear();
+  btn.disabled = false;
+  btn.textContent = 'Gerar e enviar selecionadas';
+  renderStartScreen();
+});
 
 $('input-search-nota').addEventListener('input', renderStartScreen);
 
@@ -489,7 +621,7 @@ $('btn-start-session').addEventListener('click', async ()=>{
     return;
   }
 
-  const novaSessao = { id: genId(), nota: val, setor: selectedSetor, points: [], formPreenchido: false, _hydratada: true };
+  const novaSessao = { id: genId(), nota: val, setor: selectedSetor, points: [], formPreenchido: false, criadoEm: Date.now(), _hydratada: true };
   sessions.push(novaSessao);
   activeSessionId = novaSessao.id;
   await saveSessions();
@@ -1123,7 +1255,40 @@ function renderViabChecklist(respostasSalvas){
   });
 }
 
-$('btn-viab-1-next').addEventListener('click', ()=>{
+async function salvarRascunhoViabForm(){
+  const s = getActiveSession();
+  if(!s) return;
+
+  const checklist = {};
+  document.querySelectorAll('#viab-checklist-list .checklist-item').forEach(div=>{
+    const qid = div.dataset.qid;
+    checklist[qid] = {
+      resposta: div.dataset.resposta,
+      detalhe: div.querySelector('.q-detail-text') ? div.querySelector('.q-detail-text').value.trim() : '',
+      contato1: div.querySelector('.q-contact1') ? div.querySelector('.q-contact1').value.trim() : undefined,
+      contato2: div.querySelector('.q-contact2') ? div.querySelector('.q-contact2').value.trim() : undefined
+    };
+  });
+
+  const melhorDiaBtn = document.querySelector('.melhor-dia-btn.active');
+
+  s.viabForm = {
+    responsavel: $('viab-responsavel').value.trim(),
+    telefone: $('viab-telefone').value.trim(),
+    chavesIsolacao: $('viab-chaves-isolacao').value.trim(),
+    chavesReferencia: $('viab-chaves-referencia').value.trim(),
+    janela: $('viab-janela').value.trim(),
+    equipes: $('viab-equipes').value.trim(),
+    tempoDeslocamento: $('viab-tempo-deslocamento').value.trim(),
+    tempoPrevisto: $('viab-tempo-previsto').value.trim(),
+    melhorDia: melhorDiaBtn ? melhorDiaBtn.dataset.valor : undefined,
+    checklist,
+    observacoes: $('viab-observacoes').value.trim()
+  };
+  await saveSessions();
+}
+
+$('btn-viab-1-next').addEventListener('click', async ()=>{
   const camposObrigatorios = ['viab-responsavel','viab-telefone','viab-chaves-isolacao','viab-chaves-referencia','viab-janela','viab-equipes','viab-tempo-deslocamento','viab-tempo-previsto'];
   for(const id of camposObrigatorios){
     if(!$(id).value.trim()){
@@ -1137,12 +1302,16 @@ $('btn-viab-1-next').addEventListener('click', ()=>{
     toast('Selecione o melhor dia para execução.');
     return;
   }
+  await salvarRascunhoViabForm();
   showScreen('screen-viab-2');
 });
 
-$('btn-viab-2-back').addEventListener('click', ()=> showScreen('screen-viab-1'));
+$('btn-viab-2-back').addEventListener('click', async ()=>{
+  await salvarRascunhoViabForm();
+  showScreen('screen-viab-1');
+});
 
-$('btn-viab-2-next').addEventListener('click', ()=>{
+$('btn-viab-2-next').addEventListener('click', async ()=>{
   const items = document.querySelectorAll('#viab-checklist-list .checklist-item');
   for(const div of items){
     const resposta = div.dataset.resposta;
@@ -1170,10 +1339,14 @@ $('btn-viab-2-next').addEventListener('click', ()=>{
       }
     }
   }
+  await salvarRascunhoViabForm();
   showScreen('screen-viab-3');
 });
 
-$('btn-viab-3-back').addEventListener('click', ()=> showScreen('screen-viab-2'));
+$('btn-viab-3-back').addEventListener('click', async ()=>{
+  await salvarRascunhoViabForm();
+  showScreen('screen-viab-2');
+});
 
 $('btn-viab-3-finish').addEventListener('click', async ()=>{
   const observacoes = $('viab-observacoes').value.trim();
@@ -1185,30 +1358,7 @@ $('btn-viab-3-finish').addEventListener('click', async ()=>{
   const s = getActiveSession();
   if(!s) return;
 
-  const checklist = {};
-  document.querySelectorAll('#viab-checklist-list .checklist-item').forEach(div=>{
-    const qid = div.dataset.qid;
-    checklist[qid] = {
-      resposta: div.dataset.resposta,
-      detalhe: div.querySelector('.q-detail-text').value.trim(),
-      contato1: div.querySelector('.q-contact1') ? div.querySelector('.q-contact1').value.trim() : undefined,
-      contato2: div.querySelector('.q-contact2') ? div.querySelector('.q-contact2').value.trim() : undefined
-    };
-  });
-
-  s.viabForm = {
-    responsavel: $('viab-responsavel').value.trim(),
-    telefone: $('viab-telefone').value.trim(),
-    chavesIsolacao: $('viab-chaves-isolacao').value.trim(),
-    chavesReferencia: $('viab-chaves-referencia').value.trim(),
-    janela: $('viab-janela').value.trim(),
-    equipes: $('viab-equipes').value.trim(),
-    tempoDeslocamento: $('viab-tempo-deslocamento').value.trim(),
-    tempoPrevisto: $('viab-tempo-previsto').value.trim(),
-    melhorDia: document.querySelector('.melhor-dia-btn.active').dataset.valor,
-    checklist,
-    observacoes
-  };
+  await salvarRascunhoViabForm();
   s.formPreenchido = true;
   await saveSessions();
   toast('Formulário concluído.');
@@ -1979,7 +2129,7 @@ async function pedirArmazenamentoPersistente(){
    última vista nesse celular (guardada em localStorage, é só um texto
    pequeno, não precisa do IndexedDB pra isso). Se for diferente (e não
    for a primeiríssima vez abrindo o app), mostra um aviso rápido. */
-const APP_VERSION = 'v36'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
+const APP_VERSION = 'v38'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
 function avisarSeAtualizado(){
   try{
     const vistaAnteriormente = localStorage.getItem('tobace_app_versao_vista');
