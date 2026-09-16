@@ -110,12 +110,18 @@ function getGeoLabel(){
 }
 
 /* ===================== Armazenamento (IndexedDB) ===================== */
-/* Trocado de localStorage pra IndexedDB: localStorage tem limite de ~5MB,
-   insuficiente pra guardar várias fotos em base64. IndexedDB aguenta
-   ordens de grandeza a mais, o que é necessário aqui. */
+/* Cada sessão (nota) é guardada na sua PRÓPRIA chave, com todas as fotos.
+   Além disso existe um "índice" leve — uma lista com só nota, setor,
+   quantidade de pontos, status — sem nenhuma foto. A tela inicial usa só
+   esse índice leve; os dados completos (com fotos) de uma sessão só são
+   carregados quando ela é realmente aberta ("Continuar" ou "Gerar PDF").
+   Antes, TODAS as fotos de TODAS as sessões eram carregadas de uma vez
+   assim que o app abria — com muitas notas acumuladas, isso estourava a
+   memória disponível no celular e travava o navegador. */
 const DB_NAME = 'tobace_relatorio_db';
 const DB_STORE_NAME = 'kv';
-const DB_KEY = 'sessions';
+const SESSIONS_INDEX_KEY = 'sessionsIndex';
+function sessionKey(id){ return 'session_' + id; }
 
 let dbConnectionPromise = null;
 function openDb(){
@@ -160,6 +166,17 @@ async function idbSet(key, value){
   return withTimeout(p, 20000, 'gravação no banco local');
 }
 
+async function idbDelete(key){
+  const db = await openDb();
+  const p = new Promise((resolve, reject)=>{
+    const tx = db.transaction(DB_STORE_NAME, 'readwrite');
+    tx.objectStore(DB_STORE_NAME).delete(key);
+    tx.oncomplete = ()=> resolve(true);
+    tx.onerror = ()=> reject(tx.error);
+  });
+  return withTimeout(p, 20000, 'exclusão no banco local');
+}
+
 /* ===================== Utilitários ===================== */
 function $(id){ return document.getElementById(id); }
 
@@ -180,23 +197,81 @@ function genId(){
   return 'sess_' + Date.now() + '_' + Math.round(Math.random()*1e6);
 }
 
-function saveSessions(){
-  return idbSet(DB_KEY, sessions)
-    .then(()=>{
-      /* diagnóstico temporário — confirma visualmente que o dado foi
-         gravado de verdade, sem precisar abrir o console */
-      console.log('saveSessions OK, sessions=', sessions.length);
-    })
-    .catch((e)=>{
-      const msg = (e && (e.message || e.name)) ? (e.message || e.name) : 'erro desconhecido';
-      toast('FALHA AO SALVAR: ' + msg, 8000);
-      console.error('saveSessions FALHOU:', e);
-    });
+/* projeção leve de uma sessão (sem fotos) — usada só na lista da tela inicial */
+function toLightweight(s){
+  return {
+    id: s.id,
+    nota: s.nota,
+    setor: s.setor,
+    pointCount: s.points ? s.points.length : (typeof s.pointCount === 'number' ? s.pointCount : 0),
+    pdfGerado: !!s.pdfGerado,
+    compartilhadoEm: s.compartilhadoEm || null,
+    formPreenchido: !!s.formPreenchido
+  };
+}
+
+function getPointCount(s){
+  return s.points ? s.points.length : (s.pointCount || 0);
+}
+
+async function persistIndex(){
+  const leve = sessions.map(toLightweight);
+  await idbSet(SESSIONS_INDEX_KEY, leve);
+}
+
+async function saveSessions(){
+  const s = getActiveSession();
+  if(!s) return;
+  try{
+    await idbSet(sessionKey(s.id), s);
+    await persistIndex();
+    console.log('saveSessions OK');
+  }catch(e){
+    const msg = (e && (e.message || e.name)) ? (e.message || e.name) : 'erro desconhecido';
+    toast('FALHA AO SALVAR: ' + msg, 8000);
+    console.error('saveSessions FALHOU:', e);
+  }
+}
+
+async function discardSession(id){
+  try{ await idbDelete(sessionKey(id)); }
+  catch(e){ /* mesmo se essa exclusão falhar, ainda tenta tirar do índice abaixo */ }
+  sessions = sessions.filter(x => x.id !== id);
+  try{
+    await persistIndex();
+  }catch(e){
+    toast('Erro ao descartar: ' + (e.message || 'falha desconhecida'), 6000);
+  }
+}
+
+/* carrega os dados completos (com fotos) de uma sessão, se ainda não
+   tiverem sido carregados nessa visita — idempotente, seguro de chamar
+   sempre que for preciso mexer nas fotos de uma sessão */
+async function hydrateActiveSession(){
+  const s = getActiveSession();
+  if(!s) return null;
+  if(s._hydratada) return s;
+  try{
+    const completa = await idbGet(sessionKey(s.id));
+    if(completa){
+      completa._hydratada = true;
+      const idx = sessions.findIndex(x => x.id === s.id);
+      if(idx >= 0) sessions[idx] = completa;
+      return completa;
+    }
+  }catch(e){
+    toast('Erro ao carregar os dados dessa nota: ' + (e.message || 'falha desconhecida'), 6000);
+    return null;
+  }
+  /* não achou dados completos salvos — sessão nova, criada agora mesmo,
+     já está inteira em memória mesmo (sem fotos ainda) */
+  s._hydratada = true;
+  return s;
 }
 
 async function loadSessions(){
   const tentativa = async ()=>{
-    const data = await idbGet(DB_KEY);
+    const data = await idbGet(SESSIONS_INDEX_KEY);
     if(Array.isArray(data)) return data;
     return []; // chave nunca foi criada ainda — legitimamente vazio (usuário novo)
   };
@@ -212,17 +287,37 @@ async function loadSessions(){
     return await tentativa();
   }catch(e){ console.error('2ª tentativa de carregar falhou:', e); }
 
-  /* migração de dados de versões antigas do app, que usavam localStorage
-     (limite pequeno, ~5MB — por isso a troca pra IndexedDB). Só tenta
-     isso depois de esgotar as tentativas de ler o IndexedDB. */
+  /* migração do formato antigo: uma versão anterior deste app guardava
+     TODAS as sessões (com fotos) numa única chave 'sessions'. Se essa
+     chave antiga ainda existir, migra pra uma chave por sessão + monta
+     o índice leve, e depois apaga a chave antiga. */
+  try{
+    const dataAntiga = await idbGet('sessions');
+    if(Array.isArray(dataAntiga) && dataAntiga.length){
+      for(const s of dataAntiga){
+        await idbSet(sessionKey(s.id), s);
+      }
+      const leve = dataAntiga.map(toLightweight);
+      await idbSet(SESSIONS_INDEX_KEY, leve);
+      await idbDelete('sessions').catch(()=>{});
+      return leve;
+    }
+  }catch(e){ console.error('migração do formato antigo (IndexedDB) falhou:', e); }
+
+  /* migração de um formato ainda mais antigo, de antes do IndexedDB
+     existir nesse app (localStorage, limite pequeno de ~5MB) */
   try{
     const rawArray = localStorage.getItem(STORAGE_KEY);
     if(rawArray){
       const parsed = JSON.parse(rawArray);
       if(Array.isArray(parsed)){
         localStorage.removeItem(STORAGE_KEY);
-        await idbSet(DB_KEY, parsed);
-        return parsed;
+        for(const s of parsed){
+          await idbSet(sessionKey(s.id), s);
+        }
+        const leve = parsed.map(toLightweight);
+        await idbSet(SESSIONS_INDEX_KEY, leve);
+        return leve;
       }
     }
     const rawOld = localStorage.getItem(OLD_STORAGE_KEY);
@@ -231,8 +326,10 @@ async function loadSessions(){
       if(old && old.points){
         const migrated = [{ id: genId(), nota: old.nota, points: old.points }];
         localStorage.removeItem(OLD_STORAGE_KEY);
-        await idbSet(DB_KEY, migrated);
-        return migrated;
+        await idbSet(sessionKey(migrated[0].id), migrated[0]);
+        const leve = migrated.map(toLightweight);
+        await idbSet(SESSIONS_INDEX_KEY, leve);
+        return leve;
       }
     }
   }catch(e){ console.error(e); }
@@ -330,13 +427,14 @@ function renderStartScreen(){
     setorTagEl.textContent = setorLabel(s.setor);
     setorTagEl.style.color = (s.setor === 'viabilidade') ? '#B8860B' : 'var(--verde)';
     const countEl = node.querySelector('.count');
+    const pCount = getPointCount(s);
     if(s.compartilhadoEm){
       const ts = formatTimestamp(new Date(s.compartilhadoEm));
-      countEl.textContent = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados') + ' · compartilhado em ' + ts.label;
+      countEl.textContent = pCount + (pCount===1 ? ' ponto registrado' : ' pontos registrados') + ' · compartilhado em ' + ts.label;
     } else if(s.pdfGerado){
-      countEl.innerHTML = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados') + ' · <span style="color:#B8860B; font-weight:bold;">PDF gerado, ainda não compartilhado</span>';
+      countEl.innerHTML = pCount + (pCount===1 ? ' ponto registrado' : ' pontos registrados') + ' · <span style="color:#B8860B; font-weight:bold;">PDF gerado, ainda não compartilhado</span>';
     } else {
-      countEl.textContent = s.points.length + (s.points.length===1 ? ' ponto registrado' : ' pontos registrados');
+      countEl.textContent = pCount + (pCount===1 ? ' ponto registrado' : ' pontos registrados');
     }
     node.querySelector('.btn-gerar-pdf').textContent = s.pdfGerado ? 'Gerar PDF de novo' : 'Gerar PDF';
     node.querySelector('.btn-continuar').addEventListener('click', ()=>{
@@ -345,14 +443,13 @@ function renderStartScreen(){
       goToCameraForNewPoint();
     });
     node.querySelector('.btn-gerar-pdf').addEventListener('click', ()=>{
-      if(!s.points.length){ toast('Essa sessão ainda não tem nenhum ponto registrado.'); return; }
+      if(!pCount){ toast('Essa sessão ainda não tem nenhum ponto registrado.'); return; }
       activeSessionId = s.id;
       proceedToReviewOrForm();
     });
     node.querySelector('.btn-descartar').addEventListener('click', async ()=>{
       if(confirm('Descartar a sessão da nota ' + s.nota + '? As fotos ainda não geradas em PDF serão perdidas.')){
-        sessions = sessions.filter(x => x.id !== s.id);
-        await saveSessions();
+        await discardSession(s.id);
         renderStartScreen();
       }
     });
@@ -382,7 +479,7 @@ $('btn-start-session').addEventListener('click', async ()=>{
 
   const existente = sessions.find(s => s.nota.trim().toLowerCase() === val.toLowerCase());
   if(existente){
-    const usar = confirm('A nota ' + val + ' já foi criada (' + existente.points.length + ' pontos registrados). Deseja abrir essa sessão em vez de criar uma nova?');
+    const usar = confirm('A nota ' + val + ' já foi criada (' + getPointCount(existente) + ' pontos registrados). Deseja abrir essa sessão em vez de criar uma nova?');
     if(usar){
       activeSessionId = existente.id;
       $('input-nota').value = '';
@@ -392,7 +489,7 @@ $('btn-start-session').addEventListener('click', async ()=>{
     return;
   }
 
-  const novaSessao = { id: genId(), nota: val, setor: selectedSetor, points: [], formPreenchido: false };
+  const novaSessao = { id: genId(), nota: val, setor: selectedSetor, points: [], formPreenchido: false, _hydratada: true };
   sessions.push(novaSessao);
   activeSessionId = novaSessao.id;
   await saveSessions();
@@ -539,8 +636,10 @@ function applyGuideForTipo(tipo){
   $('guide-msg-vao').style.display = ehVao ? 'block' : 'none';
 }
 
-function goToCameraForNewPoint(){
-  const s = getActiveSession();
+async function goToCameraForNewPoint(){
+  let s = getActiveSession();
+  if(!s){ showScreen('screen-start'); renderStartScreen(); return; }
+  s = await hydrateActiveSession();
   if(!s){ showScreen('screen-start'); renderStartScreen(); return; }
   applySetorFlag('cam-setor-flag', s.setor);
   $('cam-nota-label').textContent = 'Nota ' + s.nota;
@@ -931,8 +1030,10 @@ $('btn-finish-nota').addEventListener('click', async ()=>{
 });
 
 /* ===================== Viabilidade: decide se precisa do formulário ===================== */
-function proceedToReviewOrForm(){
-  const s = getActiveSession();
+async function proceedToReviewOrForm(){
+  let s = getActiveSession();
+  if(!s) return;
+  s = await hydrateActiveSession();
   if(!s) return;
   if(s.setor === 'viabilidade' && !s.formPreenchido){
     openViabForm();
@@ -1606,7 +1707,20 @@ $('btn-gerar-backup').addEventListener('click', async ()=>{
   $('btn-gerar-backup').textContent = 'Gerando…';
   $('btn-gerar-backup').disabled = true;
   try{
-    const payload = { exportadoEm: new Date().toISOString(), sessions };
+    /* busca os dados completos (com fotos) de cada sessão — a lista em
+       memória normalmente só tem a versão leve, sem fotos, das sessões
+       que ainda não foram abertas nessa visita */
+    const sessionsCompletas = [];
+    for(const leve of sessions){
+      try{
+        const completa = await idbGet(sessionKey(leve.id));
+        sessionsCompletas.push(completa || leve);
+      }catch(e){
+        sessionsCompletas.push(leve); // não conseguiu buscar essa — inclui ao menos o que já tinha
+      }
+    }
+
+    const payload = { exportadoEm: new Date().toISOString(), sessions: sessionsCompletas };
     const dataStr = JSON.stringify(payload);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const fname = buildBackupFileName();
