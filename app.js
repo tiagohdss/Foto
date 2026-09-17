@@ -2097,6 +2097,15 @@ window.addEventListener('error', (e)=>{
   toast('Erro no app: ' + (e.message || 'falha desconhecida') + ' — tire um print e envie.', 6000);
 });
 
+/* erros dentro de código assíncrono (funções com await, como o
+   salvamento) não disparam o evento 'error' acima — precisam desse
+   evento separado, senão falham em silêncio, sem nenhum aviso na tela */
+window.addEventListener('unhandledrejection', (e)=>{
+  const msg = (e.reason && e.reason.message) ? e.reason.message : (typeof e.reason === 'string' ? e.reason : 'falha desconhecida');
+  toast('Erro no app (assíncrono): ' + msg + ' — tire um print e envie.', 7000);
+  console.error('unhandledrejection:', e.reason);
+});
+
 /* Proteção contra perda de dados ao trocar de aba/janela: se essa mesma
    sessão do app ficou em segundo plano e outra aba/instância salvou
    dados novos nesse meio tempo, a versão em memória aqui está
@@ -2136,7 +2145,7 @@ async function pedirArmazenamentoPersistente(){
    última vista nesse celular (guardada em localStorage, é só um texto
    pequeno, não precisa do IndexedDB pra isso). Se for diferente (e não
    for a primeiríssima vez abrindo o app), mostra um aviso rápido. */
-const APP_VERSION = 'v39'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
+const APP_VERSION = 'v40'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
 function avisarSeAtualizado(){
   try{
     const vistaAnteriormente = localStorage.getItem('tobace_app_versao_vista');
