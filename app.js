@@ -263,10 +263,10 @@ async function discardSession(id){
 async function hydrateActiveSession(){
   const s = getActiveSession();
   if(!s) return null;
-  if(s._hydratada) return s;
+  if(s._hydratada && Array.isArray(s.points)) return s;
   try{
     const completa = await idbGet(sessionKey(s.id));
-    if(completa){
+    if(completa && Array.isArray(completa.points)){
       completa._hydratada = true;
       const idx = sessions.findIndex(x => x.id === s.id);
       if(idx >= 0) sessions[idx] = completa;
@@ -276,8 +276,15 @@ async function hydrateActiveSession(){
     toast('Erro ao carregar os dados dessa nota: ' + (e.message || 'falha desconhecida'), 6000);
     return null;
   }
-  /* não achou dados completos salvos — sessão nova, criada agora mesmo,
-     já está inteira em memória mesmo (sem fotos ainda) */
+  /* achou a sessão na lista, mas não os dados completos dela (ou eles
+     vieram sem os pontos) — situação anormal. Em vez de travar o app
+     tentando usar um array que não existe, segue com uma lista vazia,
+     mas avisa claramente que algo pode ter se perdido, em vez de fingir
+     que está tudo bem. */
+  if(!Array.isArray(s.points)){
+    toast('Não encontrei os dados completos da nota ' + s.nota + '. Os pontos já registrados podem ter sido perdidos — confira com cuidado antes de continuar.', 9000);
+    s.points = [];
+  }
   s._hydratada = true;
   return s;
 }
@@ -364,7 +371,7 @@ function itemLabel(p){
 }
 
 function pontosDaSessao(s){
-  return s.points.filter(p => (p.tipo || 'ponto') === 'ponto');
+  return (s.points || []).filter(p => (p.tipo || 'ponto') === 'ponto');
 }
 
 function nextPontoSuggestion(){
@@ -2129,7 +2136,7 @@ async function pedirArmazenamentoPersistente(){
    última vista nesse celular (guardada em localStorage, é só um texto
    pequeno, não precisa do IndexedDB pra isso). Se for diferente (e não
    for a primeiríssima vez abrindo o app), mostra um aviso rápido. */
-const APP_VERSION = 'v38'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
+const APP_VERSION = 'v39'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
 function avisarSeAtualizado(){
   try{
     const vistaAnteriormente = localStorage.getItem('tobace_app_versao_vista');
