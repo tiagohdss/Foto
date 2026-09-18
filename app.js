@@ -647,8 +647,8 @@ async function startCamera(){
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: 'environment',
-        width: { ideal: 1280 },
-        height: { ideal: 1707 }
+        width: { ideal: 1920 },
+        height: { ideal: 2560 }
       },
       audio: false
     });
@@ -656,11 +656,15 @@ async function startCamera(){
     videoTrack = stream.getVideoTracks()[0];
     setupExposureControlIfSupported();
 
-    /* ImageCapture acessa a foto de alta resolução de verdade da câmera,
-       em vez do quadro do vídeo ao vivo (que é bem mais baixa resolução).
-       Nem todo navegador suporta — sem suporte, cai no método antigo. */
+    /* ImageCapture foi testado pra tentar melhorar a resolução, mas em
+       testes reais a qualidade ficou pior que a câmera nativa (inclusive
+       trouxe o bug da vinheta escura, provavelmente pegando uma lente
+       diferente ou pulando o processamento de imagem do celular).
+       Desativado por enquanto — a chave abaixo reativa se algum
+       aparelho específico se beneficiar disso no futuro. */
+    const USAR_IMAGE_CAPTURE = false;
     imageCapture = null;
-    if(typeof ImageCapture !== 'undefined'){
+    if(USAR_IMAGE_CAPTURE && typeof ImageCapture !== 'undefined'){
       try{ imageCapture = new ImageCapture(videoTrack); }catch(e){ imageCapture = null; }
     }
 
@@ -993,7 +997,7 @@ async function capturePhoto(){
   ctx.fillText(line1, padX, boxY + lineH*0.95 + 5);
   ctx.fillText(line2, padX, boxY + lineH*1.95 + 5);
 
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.80);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
   window._pendingPhoto = { dataUrl, angle, outOfLevel, timeLabel: ts.label, geoLabel: geoLabelRaw };
   $('confirm-img').src = dataUrl;
@@ -2145,7 +2149,7 @@ async function pedirArmazenamentoPersistente(){
    última vista nesse celular (guardada em localStorage, é só um texto
    pequeno, não precisa do IndexedDB pra isso). Se for diferente (e não
    for a primeiríssima vez abrindo o app), mostra um aviso rápido. */
-const APP_VERSION = 'v40'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
+const APP_VERSION = 'v41'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
 function avisarSeAtualizado(){
   try{
     const vistaAnteriormente = localStorage.getItem('tobace_app_versao_vista');
