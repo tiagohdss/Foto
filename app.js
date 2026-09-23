@@ -3,7 +3,7 @@ const STORAGE_KEY = 'tobace_relatorio_sessoes';
 const OLD_STORAGE_KEY = 'tobace_relatorio_sessao'; // formato antigo (1 sessão só), migrado se existir
 const TOL_MIN = 85;
 const TOL_MAX = 95;
-const MAX_PHOTO_WIDTH = 1800;
+const MAX_PHOTO_WIDTH = 2600;
 const SEARCH_THRESHOLD = 5; // a partir de quantas notas o campo de busca aparece
 const LOGO_MARK_URL = 'assets/logo-mark-color.png';
 
@@ -654,6 +654,24 @@ async function startCamera(){
     });
     $('video').srcObject = stream;
     videoTrack = stream.getVideoTracks()[0];
+
+    /* "ideal" no getUserMedia acima é só uma sugestão — muitos aparelhos
+       Android entregam bem menos que isso pro modo vídeo (às vezes
+       1280x720) se a gente não pedir explicitamente o máximo real que a
+       câmera suporta. getCapabilities() devolve esse limite de verdade
+       do aparelho; aqui a gente força a stream pra esse máximo depois
+       que ela já foi aberta. Isso é o principal motivo da foto sair com
+       menos qualidade do que a câmera nativa do celular. */
+    try{
+      const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : null;
+      if(caps && caps.width && caps.height && caps.width.max && caps.height.max){
+        await videoTrack.applyConstraints({
+          width: { ideal: caps.width.max },
+          height: { ideal: caps.height.max }
+        });
+      }
+    }catch(e){ /* aparelho não deixa reforçar a resolução — segue com o que já foi negociado acima */ }
+
     setupExposureControlIfSupported();
 
     /* ImageCapture foi testado pra tentar melhorar a resolução, mas em
@@ -2115,11 +2133,32 @@ window.addEventListener('unhandledrejection', (e)=>{
    dados novos nesse meio tempo, a versão em memória aqui está
    desatualizada. Sem isso, a próxima gravação sobrescreveria o banco
    com dado velho, apagando o que a outra aba salvou. Ao voltar a ficar
-   visível, recarrega a lista de sessões do banco antes de continuar. */
+   visível, recarrega a lista de sessões do banco antes de continuar.
+
+   CUIDADO (bug corrigido na v42): loadSessions() devolve só a versão
+   LEVE das sessões (sem os pontos/fotos — ver toLightweight()). Antes,
+   esse recarregamento substituía a sessão inteira em memória por essa
+   versão leve, mesmo quando essa era a sessão que o usuário estava
+   editando NAQUELE EXATO MOMENTO (ex: no meio do formulário de
+   Viabilidade). Resultado: s.points virava undefined e qualquer
+   tentativa de salvar um ponto quebrava com "Cannot read properties of
+   undefined (reading 'push')" — bastava trocar de app ou a tela apagar
+   sozinha no meio do preenchimento. Agora, a sessão ativa (se já estava
+   carregada por completo) é preservada; só as outras sessões da lista
+   são atualizadas com a versão fresca do banco. */
 document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState === 'visible'){
     try{
-      sessions = await loadSessions();
+      const frescas = await loadSessions();
+      if(Array.isArray(frescas)){
+        const atual = getActiveSession();
+        sessions = frescas.map(leve => {
+          if(atual && leve.id === atual.id && atual._hydratada && Array.isArray(atual.points)){
+            return atual;
+          }
+          return leve;
+        });
+      }
     }catch(e){ /* mantém o que já estava em memória se a leitura falhar */ }
     if($('screen-start').classList.contains('active')){
       renderStartScreen();
@@ -2149,7 +2188,7 @@ async function pedirArmazenamentoPersistente(){
    última vista nesse celular (guardada em localStorage, é só um texto
    pequeno, não precisa do IndexedDB pra isso). Se for diferente (e não
    for a primeiríssima vez abrindo o app), mostra um aviso rápido. */
-const APP_VERSION = 'v41'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
+const APP_VERSION = 'v42'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
 function avisarSeAtualizado(){
   try{
     const vistaAnteriormente = localStorage.getItem('tobace_app_versao_vista');
