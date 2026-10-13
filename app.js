@@ -1886,35 +1886,60 @@ $('btn-gerar-backup').addEventListener('click', async ()=>{
   $('btn-gerar-backup').textContent = 'Gerando…';
   $('btn-gerar-backup').disabled = true;
   try{
-    /* busca os dados completos (com fotos) de cada sessão — a lista em
-       memória normalmente só tem a versão leve, sem fotos, das sessões
-       que ainda não foram abertas nessa visita */
-    const sessionsCompletas = [];
+    /* Backup montado NOTA POR NOTA, sem nunca juntar tudo num texto só.
+       (Até a v42 isso era um único JSON.stringify de todas as notas com
+       todas as fotos em base64 — com muitas notas isso estourava a
+       memória do celular e o app fechava com "Ah, não!".)
+       Cada nota é lida do banco, vira texto, é entregue pra um Blob
+       (que o navegador pode manter fora da memória principal) e
+       descartada. Se o total passar de ~60MB, divide em várias partes,
+       cada uma um JSON válido por si só, pra caber no limite de envio
+       do WhatsApp. */
+    const LIMITE_PARTE = 60 * 1024 * 1024;
+    const exportadoEm = new Date().toISOString();
+    const partes = []; // cada item: { blobs: [...], bytes, qtd }
+    let atual = { blobs: [], bytes: 0, qtd: 0 };
+
     for(const leve of sessions){
-      try{
-        const completa = await idbGet(sessionKey(leve.id));
-        sessionsCompletas.push(completa || leve);
-      }catch(e){
-        sessionsCompletas.push(leve); // não conseguiu buscar essa — inclui ao menos o que já tinha
+      let completa = null;
+      try{ completa = await idbGet(sessionKey(leve.id)); }catch(e){ /* usa a versão leve abaixo */ }
+      let txt = JSON.stringify(completa || leve);
+      completa = null;
+      const bl = new Blob([txt]);
+      txt = null;
+      if(atual.qtd > 0 && atual.bytes + bl.size > LIMITE_PARTE){
+        partes.push(atual);
+        atual = { blobs: [], bytes: 0, qtd: 0 };
       }
+      atual.blobs.push(atual.qtd > 0 ? new Blob([',']) : new Blob([''])); // separador
+      atual.blobs.push(bl);
+      atual.bytes += bl.size;
+      atual.qtd++;
     }
+    if(atual.qtd > 0 || partes.length === 0) partes.push(atual);
 
-    const payload = { exportadoEm: new Date().toISOString(), sessions: sessionsCompletas };
-    const dataStr = JSON.stringify(payload);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const fname = buildBackupFileName();
-    const file = new File([blob], fname, { type: 'application/json' });
+    const base = buildBackupFileName().replace(/\.json$/, '');
+    const arquivos = partes.map((p, i)=>{
+      const cab = new Blob(['{"exportadoEm":"' + exportadoEm + '","parte":' + (i+1) + ',"totalPartes":' + partes.length + ',"sessions":[']);
+      const fim = new Blob([']}']);
+      const blob = new Blob([cab, ...p.blobs, fim], { type: 'application/json' });
+      const nome = partes.length > 1 ? `${base}_parte${i+1}de${partes.length}.json` : `${base}.json`;
+      return new File([blob], nome, { type: 'application/json' });
+    });
 
-    if(navigator.canShare && navigator.canShare({ files: [file] })){
+    if(navigator.canShare && navigator.canShare({ files: arquivos })){
       try{
-        await navigator.share({ files: [file], title: 'Backup semanal — B. Tobace', text: 'Backup dos dados do app (' + fname + ')' });
+        await navigator.share({ files: arquivos, title: 'Backup semanal — B. Tobace', text: 'Backup dos dados do app (' + arquivos.length + (arquivos.length>1 ? ' arquivos' : ' arquivo') + ')' });
       }catch(e){ /* cancelou o compartilhamento — segue pra confirmação manual mesmo assim */ }
     } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = fname; a.click();
-      URL.revokeObjectURL(url);
-      toast('Backup baixado — envie esse arquivo manualmente no grupo.', 5000);
+      for(const f of arquivos){
+        const url = URL.createObjectURL(f);
+        const a = document.createElement('a');
+        a.href = url; a.download = f.name; a.click();
+        await new Promise(r => setTimeout(r, 800));
+        URL.revokeObjectURL(url);
+      }
+      toast('Backup baixado (' + arquivos.length + (arquivos.length>1 ? ' arquivos' : ' arquivo') + ') — envie manualmente no grupo.', 6000);
     }
   }catch(e){
     toast('Erro ao gerar o backup: ' + (e.message || 'falha desconhecida'), 6000);
@@ -2188,7 +2213,7 @@ async function pedirArmazenamentoPersistente(){
    última vista nesse celular (guardada em localStorage, é só um texto
    pequeno, não precisa do IndexedDB pra isso). Se for diferente (e não
    for a primeiríssima vez abrindo o app), mostra um aviso rápido. */
-const APP_VERSION = 'v42'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
+const APP_VERSION = 'v43'; // atualizar esse número junto com o CACHE_NAME do sw.js a cada mudança
 function avisarSeAtualizado(){
   try{
     const vistaAnteriormente = localStorage.getItem('tobace_app_versao_vista');
